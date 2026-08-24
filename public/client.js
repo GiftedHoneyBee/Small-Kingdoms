@@ -3,6 +3,8 @@ const $ = id => document.getElementById(id);
 const ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}`);
 
 let DEFS = null, myId = null, state = null;
+const tileMap = new Map();
+let needsDraw = true;
 let selectedCiv = 'imperius';
 let selected = null; // {kind:'unit'|'city', id}
 let cam = { x: 0, y: 0, scale: 34 };
@@ -89,6 +91,8 @@ function renderLobby(m) {
 function onState(s) {
   const first = !state;
   state = s;
+  for (const t of s.tiles) tileMap.set(`${t.q},${t.r}`, t);
+  needsDraw = true;
   assignColors(s.players);
   if (first) {
     $('lobby').classList.add('hidden');
@@ -118,8 +122,11 @@ function updateHud() {
   const me = state.players.find(p => p.id === myId);
   $('mypoints').textContent = `⭐ ${me.points} / ${state.pointsToWin}`;
 
-  // players panel
+  // players panel (only rebuild when contents change)
   const pp = $('players-panel');
+  const ppKey = JSON.stringify(state.players);
+  if (pp.dataset.key === ppKey) { renderSelectPanel(); renderTechModal(); pushEvents(); return; }
+  pp.dataset.key = ppKey;
   pp.innerHTML = '<h4>Players</h4>';
   for (const p of state.players) {
     const d = document.createElement('div');
@@ -138,7 +145,10 @@ function updateHud() {
 
   renderSelectPanel();
   renderTechModal();
+  pushEvents();
+}
 
+function pushEvents() {
   for (const ev of state.events) {
     if (seenEvents.has(ev)) continue;
     seenEvents.add(ev);
@@ -152,12 +162,18 @@ function updateHud() {
 
 function sendAction(a) { ws.send(JSON.stringify({ type: 'action', ...a })); }
 
-function renderSelectPanel() {
+let selectKey = '';
+function renderSelectPanel(force = false) {
   const el = $('select-panel');
+  const k = JSON.stringify([selected, selected && (selected.kind === 'unit'
+    ? state.units.find(u => u.id === selected.id)
+    : state.cities.find(c => c.id === selected.id)), state.res, state.techs]);
+  if (!force && k === selectKey) return;
+  selectKey = k;
   if (!selected) { el.innerHTML = '<em>Select one of your units or cities. Right-click / second click a tile to move a selected unit.</em>'; return; }
   if (selected.kind === 'unit') {
     const u = state.units.find(u => u.id === selected.id);
-    if (!u) { selected = null; renderSelectPanel(); return; }
+    if (!u) { selected = null; renderSelectPanel(true); return; }
     const def = DEFS.units[u.type];
     el.innerHTML = `<h4>${UNIT_ICONS[u.type]} ${def.name}</h4>HP ${u.hp}/${u.maxHp} · ATK ${def.atk} · DEF ${def.def}<br><small>Click a tile to move. Moving onto enemies attacks them.</small>`;
     if (u.type === 'settler') {
@@ -168,7 +184,7 @@ function renderSelectPanel() {
     }
   } else {
     const c = state.cities.find(c => c.id === selected.id);
-    if (!c || c.ownerId !== myId) { selected = null; renderSelectPanel(); return; }
+    if (!c || c.ownerId !== myId) { selected = null; renderSelectPanel(true); return; }
     el.innerHTML = `<h4>🏙️ ${c.name}${c.capital ? ' ★' : ''}</h4>HP ${c.hp}/${c.maxHp}<br>Buildings: ${c.buildings.length ? c.buildings.join(', ') : 'none'}<br><b>Train units</b>`;
     for (const [k, d] of Object.entries(DEFS.units)) {
       const locked = d.tech && !state.techs.includes(d.tech);
@@ -199,8 +215,12 @@ function canAfford(cost) { return Object.entries(cost).every(([k, v]) => state.r
 // tech modal
 $('tech-btn').onclick = () => { $('tech-modal').classList.remove('hidden'); renderTechModal(); };
 $('tech-close').onclick = () => $('tech-modal').classList.add('hidden');
+let techKey = '';
 function renderTechModal() {
   if ($('tech-modal').classList.contains('hidden') || !state) return;
+  const k = JSON.stringify([state.res.science, state.techs]);
+  if (k === techKey) return;
+  techKey = k;
   $('sci-have').textContent = `— 🔬 ${state.res.science}`;
   const el = $('tech-list');
   el.innerHTML = '';
@@ -248,7 +268,7 @@ function showGameOver() {
 // ---------------- Canvas ----------------
 const canvas = $('canvas');
 const ctx = canvas.getContext('2d');
-function resize() { canvas.width = innerWidth; canvas.height = innerHeight; }
+function resize() { canvas.width = innerWidth; canvas.height = innerHeight; needsDraw = true; }
 addEventListener('resize', resize); resize();
 
 function hexToPx(q, r) {
@@ -271,11 +291,13 @@ addEventListener('mousemove', (e) => {
   const dx = e.clientX - last.x, dy = e.clientY - last.y;
   if (Math.abs(dx) + Math.abs(dy) > 3) dragMoved = true;
   cam.x -= dx; cam.y -= dy;
+  needsDraw = true;
   last = { x: e.clientX, y: e.clientY };
 });
 addEventListener('mouseup', () => { dragging = false; });
 canvas.addEventListener('wheel', (e) => {
   cam.scale = Math.max(14, Math.min(70, cam.scale * (e.deltaY < 0 ? 1.12 : 0.89)));
+  needsDraw = true;
 });
 canvas.addEventListener('click', (e) => {
   if (dragMoved || !state) return;
@@ -299,7 +321,8 @@ function handleTileClick(q, r) {
   if (unit && unit.ownerId === myId) selected = { kind: 'unit', id: unit.id };
   else if (city && city.ownerId === myId) selected = { kind: 'city', id: city.id };
   else selected = null;
-  renderSelectPanel();
+  needsDraw = true;
+  renderSelectPanel(true);
 }
 
 function drawHex(x, y, s, fill, stroke) {
@@ -316,12 +339,13 @@ function drawHex(x, y, s, fill, stroke) {
 
 function render() {
   requestAnimationFrame(render);
-  if (!state) return;
+  if (!state || !needsDraw) return;
+  needsDraw = false;
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   ctx.save();
   ctx.translate(canvas.width / 2 - cam.x, canvas.height / 2 - cam.y);
 
-  for (const t of state.tiles) {
+  for (const t of tileMap.values()) {
     const { x, y } = hexToPx(t.q, t.r);
     drawHex(x, y, cam.scale * 0.96, TERRAIN_COLORS[t.terrain], '#0d1420');
     if (t.bonus && cam.scale > 20) {

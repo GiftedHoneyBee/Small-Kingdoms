@@ -22,6 +22,7 @@ class Game {
     this.startTime = Date.now();
     this.over = false;
     this.winner = null;
+    this.dirtyTiles = new Set();
     this.cityNameIdx = 0;
 
     playersInfo.forEach((info, i) => {
@@ -51,6 +52,12 @@ class Game {
   unitAt(q, r) {
     for (const u of this.units.values()) if (u.q === q && u.r === r) return u;
     return null;
+  }
+
+  buildOccupancy() {
+    const occ = new Map();
+    for (const u of this.units.values()) occ.set(key(u.q, u.r), u);
+    return occ;
   }
 
   cityAt(q, r) {
@@ -100,6 +107,7 @@ class Game {
       buildings: [], hp: isCapital ? 60 : 40, maxHp: isCapital ? 60 : 40, capital: isCapital,
     };
     t.cityId = c.id; t.village = false;
+    this.dirtyTiles.add(key(q, r));
     this.cities.set(c.id, c);
     p.points += GAME.points.city;
     this.reveal(p, q, r, 2);
@@ -250,6 +258,7 @@ class Game {
 
   moveUnits() {
     const now = Date.now();
+    const occMap = this.buildOccupancy();
     for (const u of [...this.units.values()]) {
       if (!u.dest || now < u.nextMoveAt) continue;
       if (u.q === u.dest.q && u.r === u.dest.r) { u.dest = null; continue; }
@@ -259,7 +268,7 @@ class Game {
       for (const [nq, nr] of neighbors(u.q, u.r)) {
         const t = this.tile(nq, nr);
         if (!t || !TERRAIN[t.terrain].move) continue;
-        const occ = this.unitAt(nq, nr);
+        const occ = occMap.get(key(nq, nr));
         if (occ && this.areAllies(u.ownerId, occ.ownerId)) continue;
         const d = hexDist({ q: nq, r: nr }, u.dest);
         if (d < bestD) { bestD = d; best = { q: nq, r: nr, occ }; }
@@ -268,13 +277,15 @@ class Game {
       const civ = CIVS[p.civ];
       u.nextMoveAt = now + UNITS[u.type].moveMs * (civ.speedMult || 1);
 
-      if (best.occ) { this.fight(u, best.occ); continue; }
+      if (best.occ) { this.fight(u, best.occ); if (!this.units.has(best.occ.id)) occMap.delete(key(best.occ.q, best.occ.r)); continue; }
       const city = this.cityAt(best.q, best.r);
       if (city && !this.areAllies(u.ownerId, city.ownerId)) {
         this.attackCity(u, city);
         continue;
       }
+      occMap.delete(key(u.q, u.r));
       u.q = best.q; u.r = best.r;
+      occMap.set(key(u.q, u.r), u);
       this.reveal(p, u.q, u.r, UNITS[u.type].vision || 1);
       const t = this.tile(u.q, u.r);
       if (t.village) this.captureVillage(p, u, t);
@@ -355,12 +366,14 @@ class Game {
   }
 
   // ---------- serialization ----------
-  viewFor(pid) {
+  viewFor(pid, sentTiles = null) {
     const p = this.player(pid);
     if (!p) return null;
     const visibleTiles = [];
     for (const k of p.explored) {
+      if (sentTiles && sentTiles.has(k) && !this.dirtyTiles.has(k)) continue;
       const t = this.tiles.get(k);
+      if (sentTiles) sentTiles.add(k);
       visibleTiles.push({
         q: t.q, r: t.r, terrain: t.terrain, bonus: t.bonus,
         village: t.village, cityId: t.cityId,

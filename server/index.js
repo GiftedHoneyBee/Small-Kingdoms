@@ -50,6 +50,8 @@ function startGame(room) {
     id: p.id, name: p.name, civ: p.civ, isBot: p.isBot, botLevel: p.botLevel,
   })));
   room.bots = room.players.filter(p => p.isBot).map(p => new Bot(room.game, p.id));
+  room.sentTiles = new Map(); // playerId -> Set of tile keys already sent
+  for (const p of room.players) room.sentTiles.set(p.id, new Set());
   let lastIncome = Date.now();
   room.interval = setInterval(() => {
     const g = room.game;
@@ -60,8 +62,9 @@ function startGame(room) {
     g.checkEnd();
     g.events = g.events.filter(e => now - e.ts < 4000);
     for (const p of room.players) {
-      if (p.ws) send(p.ws, g.viewFor(p.id));
+      if (p.ws) send(p.ws, g.viewFor(p.id, room.sentTiles.get(p.id)));
     }
+    g.dirtyTiles.clear();
     if (g.over) {
       clearInterval(room.interval);
       setTimeout(() => rooms.delete(room.id), 60000);
