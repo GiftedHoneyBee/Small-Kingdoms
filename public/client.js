@@ -175,7 +175,8 @@ function renderSelectPanel(force = false) {
     const u = state.units.find(u => u.id === selected.id);
     if (!u) { selected = null; renderSelectPanel(true); return; }
     const def = DEFS.units[u.type];
-    el.innerHTML = `<h4>${UNIT_ICONS[u.type]} ${def.name}</h4>HP ${u.hp}/${u.maxHp} · ATK ${def.atk} · DEF ${def.def}<br><small>Click a tile to move. Moving onto enemies attacks them.</small>`;
+    el.innerHTML = `<h4>${UNIT_ICONS[u.type]} ${def.name}</h4>HP ${u.hp}/${u.maxHp} · ATK ${def.atk} · DEF ${def.def}<br><small>Click a tile to move. Moving onto enemies attacks them. Esc deselects.</small>`;
+    addDeselectBtn(el);
     if (u.type === 'settler') {
       const b = document.createElement('button');
       b.className = 'act-btn'; b.textContent = '🏙️ Found city here';
@@ -206,8 +207,27 @@ function renderSelectPanel(force = false) {
       b.onclick = () => sendAction({ action: 'build', cityId: c.id, building: k });
       el.appendChild(b);
     }
+    addDeselectBtn(el);
   }
 }
+
+function deselect() {
+  selected = null;
+  needsDraw = true;
+  renderSelectPanel(true);
+}
+
+function addDeselectBtn(el) {
+  const b = document.createElement('button');
+  b.className = 'act-btn';
+  b.textContent = '❌ Deselect (Esc)';
+  b.onclick = deselect;
+  el.appendChild(b);
+}
+
+addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && selected) deselect();
+});
 
 function costStr(cost) { return Object.entries(cost).map(([k, v]) => `${{ food: '🍎', wood: '🪵', stone: '🪨', gold: '🪙' }[k]}${v}`).join(' '); }
 function canAfford(cost) { return Object.entries(cost).every(([k, v]) => state.res[k] >= v); }
