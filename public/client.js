@@ -318,7 +318,9 @@ function handleTileClick(q, r) {
       return;
     }
   }
-  if (unit && unit.ownerId === myId) selected = { kind: 'unit', id: unit.id };
+  const unitAlreadySelected = unit && selected && selected.kind === 'unit' && selected.id === unit.id;
+  if (unitAlreadySelected && city && city.ownerId === myId) selected = { kind: 'city', id: city.id };
+  else if (unit && unit.ownerId === myId) selected = { kind: 'unit', id: unit.id };
   else if (city && city.ownerId === myId) selected = { kind: 'city', id: city.id };
   else selected = null;
   needsDraw = true;
