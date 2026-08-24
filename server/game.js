@@ -29,7 +29,7 @@ class Game {
       const p = {
         id: info.id, name: info.name, civ: info.civ in CIVS ? info.civ : 'imperius',
         isBot: !!info.isBot, botLevel: info.botLevel || 'medium',
-        res: { food: 50, wood: 30, stone: 20, gold: 30, science: 0 },
+        res: { food: 40, wood: 25, stone: 15, gold: 25, science: 0 },
         techs: new Set(), explored: new Set(), points: 0, kills: 0,
         alive: true, allies: new Set(), allyRequests: new Set(),
       };
@@ -225,24 +225,27 @@ class Game {
     for (const p of this.players.values()) {
       if (!p.alive) continue;
       const civ = CIVS[p.civ];
-      const inc = { food: 1, wood: 1, stone: 0, gold: 1, science: 1 };
+      const inc = { food: 0.6, wood: 0.5, stone: 0, gold: 0.5, science: 0.7 };
+      let cityIdx = 0;
       for (const c of this.cities.values()) {
         if (c.ownerId !== p.id) continue;
-        inc.food += 2; inc.gold += 1;
+        // each extra city yields diminishing returns to soften exponential snowballing
+        const eff = Math.pow(0.8, cityIdx++);
+        inc.food += 1.5 * eff; inc.gold += 0.75 * eff;
         // tiles around city
         for (const [nq, nr] of [[c.q, c.r], ...neighbors(c.q, c.r)]) {
           const t = this.tile(nq, nr);
           if (!t) continue;
           const y = TERRAIN[t.terrain];
           const mult = t.bonus ? 2 : 1;
-          inc.food += (y.food * mult) / 4;
-          inc.wood += (y.wood * mult) / 4;
-          inc.stone += (y.stone * mult) / 4;
-          inc.gold += (y.gold * mult) / 4;
+          inc.food += (y.food * mult * eff) / 8;
+          inc.wood += (y.wood * mult * eff) / 8;
+          inc.stone += (y.stone * mult * eff) / 8;
+          inc.gold += (y.gold * mult * eff) / 8;
         }
         for (const b of c.buildings) {
           const bd = BUILDINGS[b];
-          if (bd.income) for (const [k, v] of Object.entries(bd.income)) inc[k] += v;
+          if (bd.income) for (const [k, v] of Object.entries(bd.income)) inc[k] += v * eff;
           if (bd.pointsPerSec) p.points += bd.pointsPerSec;
         }
         // cities slowly heal
