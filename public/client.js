@@ -165,23 +165,33 @@ function sendAction(a) { ws.send(JSON.stringify({ type: 'action', ...a })); }
 let selectKey = '';
 function renderSelectPanel(force = false) {
   const el = $('select-panel');
-  const k = JSON.stringify([selected, selected && (selected.kind === 'unit'
-    ? state.units.find(u => u.id === selected.id)
+  const k = JSON.stringify([selected, selected && (selected.kind === 'units'
+    ? selected.ids.map(id => state.units.find(u => u.id === id))
     : state.cities.find(c => c.id === selected.id)), state.res, state.techs]);
   if (!force && k === selectKey) return;
   selectKey = k;
-  if (!selected) { el.innerHTML = '<em>Select one of your units or cities. Right-click / second click a tile to move a selected unit.</em>'; return; }
-  if (selected.kind === 'unit') {
-    const u = state.units.find(u => u.id === selected.id);
-    if (!u) { selected = null; renderSelectPanel(true); return; }
-    const def = DEFS.units[u.type];
-    el.innerHTML = `<h4>${UNIT_ICONS[u.type]} ${def.name}</h4>HP ${u.hp}/${u.maxHp} · ATK ${def.atk} · DEF ${def.def}<br><small>Click a tile to move. Moving onto enemies attacks them. Esc deselects.</small>`;
+  if (!selected) { el.innerHTML = '<em>Select one of your units or cities. Click more of your units to group them; click a tile to move. Esc deselects.</em>'; return; }
+  if (selected.kind === 'units') {
+    const us = selected.ids.map(id => state.units.find(u => u.id === id)).filter(Boolean);
+    selected.ids = us.map(u => u.id);
+    if (!us.length) { selected = null; renderSelectPanel(true); return; }
+    if (us.length === 1) {
+      const u = us[0];
+      const def = DEFS.units[u.type];
+      el.innerHTML = `<h4>${UNIT_ICONS[u.type]} ${def.name}</h4>HP ${u.hp}/${u.maxHp} · ATK ${def.atk} · DEF ${def.def}<br><small>Click a tile to move. Click more of your units to group. Esc deselects.</small>`;
+    } else {
+      el.innerHTML = `<h4>${us.length} units selected</h4>` +
+        us.map(u => `${UNIT_ICONS[u.type]} ${DEFS.units[u.type].name} (${u.hp}/${u.maxHp})`).join('<br>') +
+        `<br><small>Click a tile to move them all. Esc deselects.</small>`;
+    }
     addDeselectBtn(el);
-    if (u.type === 'settler') {
-      const b = document.createElement('button');
-      b.className = 'act-btn'; b.textContent = '🏙️ Found city here';
-      b.onclick = () => sendAction({ action: 'found', unitId: u.id });
-      el.appendChild(b);
+    for (const u of us) {
+      if (u.type === 'settler') {
+        const b = document.createElement('button');
+        b.className = 'act-btn'; b.textContent = '🏙️ Found city here';
+        b.onclick = () => sendAction({ action: 'found', unitId: u.id });
+        el.appendChild(b);
+      }
     }
   } else {
     const c = state.cities.find(c => c.id === selected.id);
@@ -331,16 +341,26 @@ function handleTileClick(q, r) {
   const unit = state.units.find(u => u.q === q && u.r === r);
   const city = state.cities.find(c => c.q === q && c.r === r);
 
-  if (selected && selected.kind === 'unit') {
-    const su = state.units.find(u => u.id === selected.id);
-    if (su && su.ownerId === myId && !(unit && unit.ownerId === myId) && !(q === su.q && r === su.r)) {
-      sendAction({ action: 'move', unitId: su.id, q, r });
+  if (selected && selected.kind === 'units') {
+    if (unit && unit.ownerId === myId) {
+      if (selected.ids.includes(unit.id)) {
+        // clicking an already-selected unit: switch to city under it (if any)
+        if (city && city.ownerId === myId) selected = { kind: 'city', id: city.id };
+      } else {
+        selected.ids.push(unit.id); // add to group
+      }
+      needsDraw = true;
+      renderSelectPanel(true);
       return;
     }
+    // move the whole group toward the clicked tile
+    for (const id of selected.ids) {
+      const su = state.units.find(u => u.id === id);
+      if (su && su.ownerId === myId && !(q === su.q && r === su.r)) sendAction({ action: 'move', unitId: id, q, r });
+    }
+    return;
   }
-  const unitAlreadySelected = unit && selected && selected.kind === 'unit' && selected.id === unit.id;
-  if (unitAlreadySelected && city && city.ownerId === myId) selected = { kind: 'city', id: city.id };
-  else if (unit && unit.ownerId === myId) selected = { kind: 'unit', id: unit.id };
+  if (unit && unit.ownerId === myId) selected = { kind: 'units', ids: [unit.id] };
   else if (city && city.ownerId === myId) selected = { kind: 'city', id: city.id };
   else selected = null;
   needsDraw = true;
@@ -401,7 +421,7 @@ function render() {
     ctx.font = `${cam.scale * 0.5}px sans-serif`; ctx.textAlign = 'center';
     ctx.fillText(UNIT_ICONS[u.type], x, y + cam.scale * 0.17);
     drawBar(x, y + cam.scale * 0.55, u.hp / u.maxHp);
-    if (selected && selected.kind === 'unit' && selected.id === u.id) {
+    if (selected && selected.kind === 'units' && selected.ids.includes(u.id)) {
       ctx.beginPath(); ctx.arc(x, y, cam.scale * 0.52, 0, Math.PI * 2);
       ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.stroke();
     }
