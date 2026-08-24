@@ -7,7 +7,10 @@ const { Bot } = require('./bot');
 const { CIVS, UNITS, BUILDINGS, TECHS, GAME } = require('./data');
 
 const app = express();
-app.use(express.static(path.join(__dirname, '..', 'public')));
+app.use(express.static(path.join(__dirname, '..', 'public'), {
+  etag: false, lastModified: false,
+  setHeaders: res => res.setHeader('Cache-Control', 'no-store'),
+}));
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server });
 
