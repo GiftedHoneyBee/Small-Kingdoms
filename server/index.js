@@ -47,11 +47,11 @@ function roomList() {
   };
 }
 
-function startGame(room) {
+function startGame(room, opts = {}) {
   if (room.game || room.players.length < 2) return;
   room.game = new Game(room.players.map(p => ({
     id: p.id, name: p.name, civ: p.civ, isBot: p.isBot, botLevel: p.botLevel,
-  })));
+  })), opts);
   room.bots = room.players.filter(p => p.isBot).map(p => new Bot(room.game, p.id));
   room.sentTiles = new Map(); // playerId -> Set of tile keys already sent
   for (const p of room.players) room.sentTiles.set(p.id, new Set());
@@ -139,7 +139,7 @@ wss.on('connection', (ws) => {
       }
 
       case 'start': {
-        if (room && room.hostId === ws.playerId) startGame(room);
+        if (room && room.hostId === ws.playerId) startGame(room, { winMode: m.winMode, speed: m.speed });
         break;
       }
 

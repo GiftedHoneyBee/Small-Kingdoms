@@ -15,7 +15,10 @@ Polytopia, Catan and Forge of Empires. Games last at most 10 minutes.
 - **Tech tree**: 10 technologies unlocking units, buildings and bonuses
 - **Armies**: 7 unit types, real-time movement and combat, city sieges
 - **Diplomacy**: alliances and chat (all players or allies only)
-- **Win** by eliminating all opponents, reaching 1500 points, or having the most points when the 10-minute timer ends. The first 90 seconds are a peace period (cities can't be attacked).
+- **Win** by eliminating all opponents, reaching 1500 points, or having the most points when the 10-minute timer ends. The first 90 seconds are a peace period (cities can't be attacked). The host can also pick **Last player standing** mode (no points/timer — play until one player remains).
+- **Game speeds**: Bullet (default) or Slow (75% reduced income, 5× slower unit movement)
+- **Settings** (session-persistent): show planned movement arrows, auto-select newly trained units
+- **In-game wiki** with full stats for every unit, building and tech
 
 ## Run
 

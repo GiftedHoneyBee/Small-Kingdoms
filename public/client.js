@@ -12,6 +12,12 @@ let selected = null; // {kind:'units', ids:[]} | {kind:'city', id}
 let groupDest = null; // current group move destination
 let cam = { x: 0, y: 0, scale: 34 };
 const seenEvents = new Set();
+const knownUnitIds = new Set();
+
+// session-persistent settings
+const SETTINGS = Object.assign({ arrows: false, autoSelect: false },
+  JSON.parse(sessionStorage.getItem('me-settings') || '{}'));
+function saveSettings() { sessionStorage.setItem('me-settings', JSON.stringify(SETTINGS)); }
 
 const TERRAIN_COLORS = {
   water: '#1d4e79', grass: '#4e8f3c', forest: '#2d6b2a', hill: '#8a7b52', mountain: '#6b6f78',
@@ -68,7 +74,7 @@ function renderRooms(list) {
 $('create-btn').onclick = () => ws.send(JSON.stringify({ type: 'createRoom', name: $('name-input').value, civ: selectedCiv }));
 $('add-bot-btn').onclick = () => ws.send(JSON.stringify({ type: 'addBot', level: $('bot-level').value }));
 $('remove-bot-btn').onclick = () => ws.send(JSON.stringify({ type: 'removeBot' }));
-$('start-btn').onclick = () => ws.send(JSON.stringify({ type: 'start' }));
+$('start-btn').onclick = () => ws.send(JSON.stringify({ type: 'start', winMode: $('win-mode').value, speed: $('game-speed').value }));
 setInterval(() => { if (!state && $('lobby-room').classList.contains('hidden')) ws.readyState === 1 && ws.send(JSON.stringify({ type: 'listRooms' })); }, 2500);
 
 let isHost = false;
@@ -97,6 +103,19 @@ function onState(s) {
   for (const t of s.tiles) tileMap.set(`${t.q},${t.r}`, t);
   needsDraw = true;
   assignColors(s.players);
+  // auto-select newly trained units (setting)
+  const newMine = [];
+  for (const u of s.units) {
+    if (!knownUnitIds.has(u.id)) {
+      knownUnitIds.add(u.id);
+      if (!first && u.ownerId === myId) newMine.push(u.id);
+    }
+  }
+  if (SETTINGS.autoSelect && newMine.length) {
+    if (selected && selected.kind === 'units') selected.ids.push(...newMine);
+    else if (!selected) selected = { kind: 'units', ids: newMine };
+    renderSelectPanel(true);
+  }
   if (first) {
     $('lobby').classList.add('hidden');
     $('game').classList.remove('hidden');
@@ -120,10 +139,14 @@ function updateHud() {
   for (const k of ['food', 'wood', 'stone', 'gold', 'science']) {
     $('res-' + k).textContent = `${{ food: '🍎', wood: '🪵', stone: '🪨', gold: '🪙', science: '🔬' }[k]} ${state.res[k]}`;
   }
-  const s = Math.ceil(state.timeLeft / 1000);
-  $('timer').textContent = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+  if (state.winMode === 'elimination') {
+    $('timer').textContent = '♾️';
+  } else {
+    const s = Math.ceil(state.timeLeft / 1000);
+    $('timer').textContent = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+  }
   const me = state.players.find(p => p.id === myId);
-  $('mypoints').textContent = `⭐ ${me.points} / ${state.pointsToWin}`;
+  $('mypoints').textContent = state.pointsToWin ? `⭐ ${me.points} / ${state.pointsToWin}` : `⭐ ${me.points}`;
 
   // players panel (only rebuild when contents change)
   const pp = $('players-panel');
@@ -172,6 +195,8 @@ function renderSelectPanel(force = false) {
     ? selected.ids.map(id => state.units.find(u => u.id === id))
     : state.cities.find(c => c.id === selected.id)), state.res, state.techs]);
   if (!force && k === selectKey) return;
+  // don't rebuild the panel while a dropdown in it is open/focused (it would collapse)
+  if (!force && el.contains(document.activeElement) && document.activeElement.tagName === 'SELECT') return;
   selectKey = k;
   if (!selected) { el.innerHTML = '<em>Select one of your units or cities. Click more of your units to group them; click a tile to move. Esc deselects.</em>'; return; }
   if (selected.kind === 'units') {
@@ -285,6 +310,45 @@ function renderTechModal() {
     d.appendChild(b);
     el.appendChild(d);
   }
+}
+
+// settings modal
+$('settings-btn').onclick = () => $('settings-modal').classList.remove('hidden');
+$('settings-close').onclick = () => $('settings-modal').classList.add('hidden');
+$('set-arrows').checked = SETTINGS.arrows;
+$('set-autoselect').checked = SETTINGS.autoSelect;
+$('set-arrows').onchange = (e) => { SETTINGS.arrows = e.target.checked; saveSettings(); needsDraw = true; };
+$('set-autoselect').onchange = (e) => { SETTINGS.autoSelect = e.target.checked; saveSettings(); };
+
+// wiki modal
+$('wiki-btn').onclick = () => { renderWiki(); $('wiki-modal').classList.remove('hidden'); };
+$('wiki-close').onclick = () => $('wiki-modal').classList.add('hidden');
+function renderWiki() {
+  if (!DEFS) return;
+  const el = $('wiki-content');
+  let h = '<h4>Civilizations</h4><table><tr><th>Civ</th><th>Bonus</th></tr>';
+  for (const c of Object.values(DEFS.civs)) h += `<tr><td><b>${c.name}</b></td><td>${c.desc}</td></tr>`;
+  h += '</table><h4>Units</h4><table><tr><th>Unit</th><th>Cost</th><th>HP</th><th>ATK</th><th>DEF</th><th>Speed</th><th>Vision</th><th>Requires</th></tr>';
+  for (const [k, d] of Object.entries(DEFS.units)) {
+    h += `<tr><td>${UNIT_ICONS[k]} <b>${d.name}</b></td><td>${costStr(d.cost)}</td><td>${d.hp}</td><td>${d.atk}</td><td>${d.def}</td><td>1 tile / ${(d.moveMs / 1000).toFixed(1)}s</td><td>${d.vision || 1}</td><td>${d.tech ? DEFS.techs[d.tech].name : '—'}</td></tr>`;
+  }
+  h += '</table><h4>Buildings</h4><table><tr><th>Building</th><th>Cost</th><th>Effect</th><th>Points</th><th>Requires</th></tr>';
+  for (const d of Object.values(DEFS.buildings)) {
+    const eff = d.income ? Object.entries(d.income).map(([k, v]) => `+${v} ${k}/s`).join(', ')
+      : d.defBonus ? `+${d.defBonus * 2} city HP` : d.pointsPerSec ? `+${d.pointsPerSec} points/s` : '—';
+    h += `<tr><td><b>${d.name}</b></td><td>${costStr(d.cost)}</td><td>${eff}</td><td>${d.points || 0}</td><td>${d.tech ? DEFS.techs[d.tech].name : '—'}</td></tr>`;
+  }
+  h += '</table><h4>Technologies</h4><table><tr><th>Tech</th><th>Cost</th><th>Unlocks</th><th>Requires</th></tr>';
+  for (const t of Object.values(DEFS.techs)) {
+    h += `<tr><td><b>${t.name}</b></td><td>🔬${t.cost}</td><td>${t.unlocks}</td><td>${t.req ? DEFS.techs[t.req].name : '—'}</td></tr>`;
+  }
+  h += `</table><h4>Rules</h4><ul>
+    <li>Income is generated every second from your cities, surrounding terrain and buildings. Extra cities give diminishing returns (each additional city produces 80% of the previous one).</li>
+    <li>Points: +${DEFS.game.points.city} per city, +${DEFS.game.points.tech} per tech, +${DEFS.game.points.kill} per kill, small amounts for exploring; temples generate points over time.</li>
+    <li>Cities can't be attacked in the first ${DEFS.game.peaceMs / 1000}s (peace period).</li>
+    <li>Slow mode: 75% reduced income and 5× slower unit movement.</li>
+  </ul>`;
+  el.innerHTML = h;
 }
 
 // chat
@@ -448,6 +512,23 @@ function render() {
     ctx.fillText(c.name, x, y - cam.scale * 0.75);
     drawBar(x, y + cam.scale * 0.55, c.hp / c.maxHp);
     if (selected && selected.kind === 'city' && selected.id === c.id) drawHex(x, y, cam.scale * 1.02, null, '#ffffff');
+  }
+
+  // planned movement arrows (setting)
+  if (SETTINGS.arrows) {
+    for (const u of state.units) {
+      if (u.ownerId !== myId || !u.dest) continue;
+      const a = hexToPx(u.q, u.r), b = hexToPx(u.dest.q, u.dest.r);
+      ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y);
+      ctx.strokeStyle = 'rgba(255,255,255,0.55)'; ctx.lineWidth = 2; ctx.setLineDash([6, 5]); ctx.stroke();
+      ctx.setLineDash([]);
+      const ang = Math.atan2(b.y - a.y, b.x - a.x);
+      ctx.beginPath();
+      ctx.moveTo(b.x, b.y);
+      ctx.lineTo(b.x - 10 * Math.cos(ang - 0.4), b.y - 10 * Math.sin(ang - 0.4));
+      ctx.lineTo(b.x - 10 * Math.cos(ang + 0.4), b.y - 10 * Math.sin(ang + 0.4));
+      ctx.closePath(); ctx.fillStyle = 'rgba(255,255,255,0.55)'; ctx.fill();
+    }
   }
 
   for (const u of state.units) {

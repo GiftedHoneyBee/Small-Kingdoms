@@ -9,9 +9,13 @@ const uid = p => `${p}${nextId++}`;
 const CITY_NAMES = ['Aldor', 'Bruma', 'Cintra', 'Doria', 'Elmyr', 'Fenwick', 'Gale', 'Harn', 'Ilium', 'Jorvik', 'Kessel', 'Lyra'];
 
 class Game {
-  constructor(playersInfo, seed = (Math.random() * 1e9) | 0) {
+  constructor(playersInfo, opts = {}, seed = (Math.random() * 1e9) | 0) {
     this.id = uid('g');
     this.seed = seed;
+    this.winMode = opts.winMode === 'elimination' ? 'elimination' : 'points';
+    this.speed = opts.speed === 'slow' ? 'slow' : 'bullet';
+    this.incomeMult = this.speed === 'slow' ? 0.25 : 1;
+    this.moveMult = this.speed === 'slow' ? 5 : 1;
     const { tiles, starts } = generateMap(seed);
     this.tiles = tiles;
     this.units = new Map();
@@ -46,7 +50,7 @@ class Game {
   // ---------- helpers ----------
   tile(q, r) { return this.tiles.get(key(q, r)); }
   player(id) { return this.players.get(id); }
-  timeLeft() { return Math.max(0, GAME.durationMs - (Date.now() - this.startTime)); }
+  timeLeft() { return this.winMode === 'elimination' ? -1 : Math.max(0, GAME.durationMs - (Date.now() - this.startTime)); }
   areAllies(a, b) { return a === b || this.player(a)?.allies.has(b); }
 
   unitAt(q, r) {
@@ -312,7 +316,7 @@ class Game {
       if (civ.foodMult) inc.food *= civ.foodMult;
       if (civ.sciMult) inc.science *= civ.sciMult;
       if (p.techs.has('banking')) inc.gold *= 1.5;
-      for (const k of Object.keys(inc)) p.res[k] = Math.min(999, p.res[k] + inc[k]);
+      for (const k of Object.keys(inc)) p.res[k] = Math.min(999, p.res[k] + inc[k] * this.incomeMult);
     }
   }
 
@@ -340,7 +344,7 @@ class Game {
         continue;
       }
       const civ = CIVS[p.civ];
-      u.nextMoveAt = now + UNITS[u.type].moveMs * (civ.speedMult || 1);
+      u.nextMoveAt = now + UNITS[u.type].moveMs * (civ.speedMult || 1) * this.moveMult;
 
       if (best.occ) { this.fight(u, best.occ); if (!this.units.has(best.occ.id)) occMap.delete(key(best.occ.q, best.occ.r)); continue; }
       const city = this.cityAt(best.q, best.r);
@@ -418,10 +422,12 @@ class Game {
     else if (alive.length > 1 && alive.every(p => alive.every(o => o.id === p.id || p.allies.has(o.id)))) {
       winner = alive.reduce((a, b) => (a.points >= b.points ? a : b));
     }
-    const overThreshold = alive.filter(p => p.points >= GAME.pointsToWin);
-    if (overThreshold.length) winner = overThreshold.reduce((a, b) => (a.points >= b.points ? a : b));
-    if (!winner && this.timeLeft() <= 0) {
-      winner = alive.reduce((a, b) => (a.points >= b.points ? a : b), alive[0]);
+    if (this.winMode !== 'elimination') {
+      const overThreshold = alive.filter(p => p.points >= GAME.pointsToWin);
+      if (overThreshold.length) winner = overThreshold.reduce((a, b) => (a.points >= b.points ? a : b));
+      if (!winner && this.timeLeft() <= 0) {
+        winner = alive.reduce((a, b) => (a.points >= b.points ? a : b), alive[0]);
+      }
     }
     if (winner) {
       this.over = true;
@@ -465,7 +471,8 @@ class Game {
       timeLeft: this.timeLeft(),
       over: this.over, winner: this.winner,
       events: this.events.filter(e => !e.to || e.to.includes(pid)).map(e => e.text),
-      pointsToWin: GAME.pointsToWin,
+      pointsToWin: this.winMode === 'elimination' ? null : GAME.pointsToWin,
+      winMode: this.winMode, speed: this.speed,
     };
   }
 }

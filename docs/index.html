@@ -19,6 +19,8 @@
         <div id="civ-list"></div>
         <div class="row">
           <button id="create-btn" class="primary">Create game</button>
+          <button id="settings-btn">⚙️ Settings</button>
+          <button id="wiki-btn">📖 Wiki</button>
         </div>
         <h3>Open games</h3>
         <div id="room-list"><em>No open games — create one!</em></div>
@@ -28,6 +30,14 @@
         <h3>Game <span id="room-id"></span></h3>
         <div id="room-players"></div>
         <div class="row" id="host-controls">
+          <select id="win-mode" title="Victory condition">
+            <option value="points" selected>1500 pts / 10 min / elimination</option>
+            <option value="elimination">Last player standing</option>
+          </select>
+          <select id="game-speed" title="Game speed">
+            <option value="bullet" selected>Bullet (fast)</option>
+            <option value="slow">Slow (75% less income, 5× slower units)</option>
+          </select>
           <select id="bot-level">
             <option value="easy">Easy bot</option>
             <option value="medium" selected>Medium bot</option>
@@ -82,11 +92,31 @@
     <div id="events"></div>
 
     <div id="gameover" class="modal hidden">
+
       <div class="panel">
         <h2 id="winner-text"></h2>
         <div id="final-scores"></div>
         <button onclick="location.reload()">Back to lobby</button>
       </div>
+    </div>
+  </div>
+
+  <!-- Settings modal -->
+  <div id="settings-modal" class="modal hidden">
+    <div class="panel">
+      <h3>⚙️ Settings</h3>
+      <label class="setting-row"><input type="checkbox" id="set-arrows"> Show movement arrows (planned unit paths)</label>
+      <label class="setting-row"><input type="checkbox" id="set-autoselect"> Auto-select newly trained units</label>
+      <button id="settings-close">Close</button>
+    </div>
+  </div>
+
+  <!-- Wiki modal -->
+  <div id="wiki-modal" class="modal hidden">
+    <div class="panel wiki-panel">
+      <h3>📖 Game wiki</h3>
+      <div id="wiki-content"></div>
+      <button id="wiki-close">Close</button>
     </div>
   </div>
 

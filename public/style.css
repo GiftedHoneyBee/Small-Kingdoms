@@ -55,3 +55,11 @@ button.primary:hover { background: #e0a83d; }
 
 .act-btn { display: block; width: 100%; text-align: left; font-size: 12px; margin: 3px 0; }
 .act-btn:disabled { opacity: .45; cursor: not-allowed; }
+
+.setting-row { display: block; margin: 10px 0; font-size: 14px; }
+.wiki-panel { max-width: 640px !important; }
+#wiki-content table { width: 100%; border-collapse: collapse; font-size: 12px; margin-bottom: 8px; }
+#wiki-content th, #wiki-content td { border: 1px solid #33415c; padding: 4px 6px; text-align: left; }
+#wiki-content th { background: #22304a; }
+#wiki-content h4 { margin: 10px 0 4px; }
+#wiki-content ul { font-size: 13px; padding-left: 18px; }

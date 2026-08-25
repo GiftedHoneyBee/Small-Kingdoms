@@ -72,7 +72,7 @@ class LocalSocket {
         if (i >= 0) { r.players.splice(i, 1); this._lobby(); }
         break;
       }
-      case 'start': this._start(); break;
+      case 'start': this._start({ winMode: m.winMode, speed: m.speed }); break;
       case 'action': {
         if (!g) break;
         const pid = this.playerId;
@@ -96,10 +96,10 @@ class LocalSocket {
     }
   }
 
-  _start() {
+  _start(opts = {}) {
     const r = this.room;
     if (!r || r.game || r.players.length < 2) return;
-    r.game = new Game(r.players.map(p => ({ id: p.id, name: p.name, civ: p.civ, isBot: p.isBot, botLevel: p.botLevel })));
+    r.game = new Game(r.players.map(p => ({ id: p.id, name: p.name, civ: p.civ, isBot: p.isBot, botLevel: p.botLevel })), opts);
     r.bots = r.players.filter(p => p.isBot).map(p => new Bot(r.game, p.id));
     const sentTiles = new Set();
     let lastIncome = Date.now();
