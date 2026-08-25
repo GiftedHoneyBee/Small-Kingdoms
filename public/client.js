@@ -6,7 +6,8 @@ let DEFS = null, myId = null, state = null;
 const tileMap = new Map();
 let needsDraw = true;
 let selectedCiv = 'imperius';
-let selected = null; // {kind:'unit'|'city', id}
+let selected = null; // {kind:'units', ids:[]} | {kind:'city', id}
+let groupDest = null; // current group move destination
 let cam = { x: 0, y: 0, scale: 34 };
 const seenEvents = new Set();
 
@@ -178,12 +179,18 @@ function renderSelectPanel(force = false) {
     if (us.length === 1) {
       const u = us[0];
       const def = DEFS.units[u.type];
-      el.innerHTML = `<h4>${UNIT_ICONS[u.type]} ${def.name}</h4>HP ${u.hp}/${u.maxHp} · ATK ${def.atk} · DEF ${def.def}<br><small>Click a tile to move. Click more of your units to group. Esc deselects.</small>`;
+      el.innerHTML = `<h4>${UNIT_ICONS[u.type]} ${def.name}</h4>HP ${u.hp}/${u.maxHp} · ATK ${def.atk} · DEF ${def.def}<br><small>Click a tile to move (click destination again to cancel). Click more of your units to group. Double-click a selected unit to select all of that type. Esc deselects.</small>`;
     } else {
       el.innerHTML = `<h4>${us.length} units selected</h4>` +
         us.map(u => `${UNIT_ICONS[u.type]} ${DEFS.units[u.type].name} (${u.hp}/${u.maxHp})`).join('<br>') +
-        `<br><small>Click a tile to move them all. Esc deselects.</small>`;
+        `<br><small>Click a tile to move them all (click it again to cancel). Esc deselects.</small>`;
     }
+    const allAuto = us.every(u => u.autoAttack);
+    const aa = document.createElement('button');
+    aa.className = 'act-btn';
+    aa.textContent = allAuto ? '⚔️ Auto-attack: ON (≤3 tiles)' : '⚔️ Auto-attack: OFF';
+    aa.onclick = () => { for (const u of us) sendAction({ action: 'autoattack', unitId: u.id, on: !allAuto }); };
+    el.appendChild(aa);
     addDeselectBtn(el);
     for (const u of us) {
       if (u.type === 'settler') {
@@ -217,12 +224,21 @@ function renderSelectPanel(force = false) {
       b.onclick = () => sendAction({ action: 'build', cityId: c.id, building: k });
       el.appendChild(b);
     }
+    const at = document.createElement('div');
+    at.innerHTML = '<b>Auto-train</b> ';
+    const sel = document.createElement('select');
+    sel.innerHTML = '<option value="">Off</option>' + Object.entries(DEFS.units)
+      .map(([k, d]) => `<option value="${k}"${c.autoTrain === k ? ' selected' : ''}>${d.name}</option>`).join('');
+    sel.onchange = () => sendAction({ action: 'autotrain', cityId: c.id, unit: sel.value || null });
+    at.appendChild(sel);
+    el.appendChild(at);
     addDeselectBtn(el);
   }
 }
 
 function deselect() {
   selected = null;
+  groupDest = null;
   needsDraw = true;
   renderSelectPanel(true);
 }
@@ -336,6 +352,19 @@ canvas.addEventListener('click', (e) => {
   const { q, r } = pxToHex(wx, wy);
   handleTileClick(q, r);
 });
+canvas.addEventListener('dblclick', (e) => {
+  if (!state) return;
+  const wx = e.clientX - canvas.width / 2 + cam.x;
+  const wy = e.clientY - canvas.height / 2 + cam.y;
+  const { q, r } = pxToHex(wx, wy);
+  const unit = state.units.find(u => u.q === q && u.r === r);
+  if (unit && unit.ownerId === myId) {
+    // select all own units of the same type
+    selected = { kind: 'units', ids: state.units.filter(u => u.ownerId === myId && u.type === unit.type).map(u => u.id) };
+    needsDraw = true;
+    renderSelectPanel(true);
+  }
+});
 
 function handleTileClick(q, r) {
   const unit = state.units.find(u => u.q === q && u.r === r);
@@ -353,7 +382,14 @@ function handleTileClick(q, r) {
       renderSelectPanel(true);
       return;
     }
-    // move the whole group toward the clicked tile
+    // clicking the current group destination again cancels the move
+    if (groupDest && groupDest.q === q && groupDest.r === r) {
+      for (const id of selected.ids) sendAction({ action: 'stop', unitId: id });
+      groupDest = null;
+      return;
+    }
+    // move the whole group toward the clicked tile (they keep moving until they arrive)
+    groupDest = { q, r };
     for (const id of selected.ids) {
       const su = state.units.find(u => u.id === id);
       if (su && su.ownerId === myId && !(q === su.q && r === su.r)) sendAction({ action: 'move', unitId: id, q, r });

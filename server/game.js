@@ -91,7 +91,7 @@ class Game {
     const def = UNITS[type];
     const u = {
       id: uid('u'), ownerId, type, q: spot[0], r: spot[1],
-      hp: def.hp, maxHp: def.hp, nextMoveAt: 0, dest: null,
+      hp: def.hp, maxHp: def.hp, nextMoveAt: 0, dest: null, autoAttack: false,
     };
     this.units.set(u.id, u);
     const p = this.player(ownerId);
@@ -105,6 +105,7 @@ class Game {
       id: uid('c'), ownerId: p.id, q, r,
       name: CITY_NAMES[this.cityNameIdx++ % CITY_NAMES.length],
       buildings: [], hp: isCapital ? 60 : 40, maxHp: isCapital ? 60 : 40, capital: isCapital,
+      autoTrain: null,
     };
     t.cityId = c.id; t.village = false;
     this.dirtyTiles.add(key(q, r));
@@ -129,14 +130,70 @@ class Game {
     u.dest = { q: tq, r: tr };
   }
 
+  actStop(pid, unitId) {
+    const u = this.units.get(unitId);
+    if (!u || u.ownerId !== pid) return;
+    u.dest = null;
+  }
+
+  actAutoAttack(pid, unitId, on) {
+    const u = this.units.get(unitId);
+    if (!u || u.ownerId !== pid) return;
+    u.autoAttack = !!on;
+  }
+
+  actAutoTrain(pid, cityId, type) {
+    const c = this.cities.get(cityId);
+    if (!c || c.ownerId !== pid) return;
+    c.autoTrain = type && UNITS[type] ? type : null;
+  }
+
   actTrain(pid, cityId, type) {
     const p = this.player(pid); const c = this.cities.get(cityId);
     const def = UNITS[type];
     if (!p || !c || !def || c.ownerId !== pid || this.over || !p.alive) return;
     if (def.tech && !p.techs.has(def.tech)) return;
     if (!this.canAfford(p, def.cost)) return;
+    if (!this.hasSpawnSpot(c.q, c.r)) return;
     this.pay(p, def.cost);
     this.spawnUnit(pid, type, c.q, c.r);
+  }
+
+  hasSpawnSpot(q, r) {
+    for (const [cq, cr] of [[q, r], ...neighbors(q, r)]) {
+      const t = this.tile(cq, cr);
+      if (t && TERRAIN[t.terrain].move && !this.unitAt(cq, cr)) return true;
+    }
+    return false;
+  }
+
+  autoTrainTick() {
+    for (const c of this.cities.values()) {
+      if (!c.autoTrain) continue;
+      this.actTrain(c.ownerId, c.id, c.autoTrain);
+    }
+  }
+
+  autoAttackTick() {
+    for (const u of this.units.values()) {
+      if (!u.autoAttack || u.dest) continue;
+      const p = this.player(u.ownerId);
+      let best = null; let bestD = Infinity;
+      for (const e of this.units.values()) {
+        if (this.areAllies(u.ownerId, e.ownerId)) continue;
+        if (p && !p.explored.has(key(e.q, e.r))) continue;
+        const d = hexDist(u, e);
+        if (d <= 3 && d < bestD) { bestD = d; best = e; }
+      }
+      if (!best) {
+        for (const c of this.cities.values()) {
+          if (this.areAllies(u.ownerId, c.ownerId)) continue;
+          const d = hexDist(u, c);
+          if (d <= 3 && d < bestD) { bestD = d; best = c; }
+        }
+      }
+      if (best) u.dest = { q: best.q, r: best.r };
+    }
   }
 
   actBuild(pid, cityId, building) {
@@ -276,7 +333,12 @@ class Game {
         const d = hexDist({ q: nq, r: nr }, u.dest);
         if (d < bestD) { bestD = d; best = { q: nq, r: nr, occ }; }
       }
-      if (!best || bestD >= hexDist(u, u.dest) + 1) { u.dest = null; continue; }
+      if (!best || bestD >= hexDist(u, u.dest) + 1) {
+        // blocked: hold position but keep the destination, retry shortly
+        u.nextMoveAt = now + 600;
+        if (hexDist(u, u.dest) <= 1) u.dest = null; // as close as possible
+        continue;
+      }
       const civ = CIVS[p.civ];
       u.nextMoveAt = now + UNITS[u.type].moveMs * (civ.speedMult || 1);
 
@@ -384,10 +446,10 @@ class Game {
     }
     const units = [...this.units.values()]
       .filter(u => p.explored.has(key(u.q, u.r)))
-      .map(u => ({ id: u.id, ownerId: u.ownerId, type: u.type, q: u.q, r: u.r, hp: Math.round(u.hp), maxHp: u.maxHp }));
+      .map(u => ({ id: u.id, ownerId: u.ownerId, type: u.type, q: u.q, r: u.r, hp: Math.round(u.hp), maxHp: u.maxHp, autoAttack: u.autoAttack, dest: u.ownerId === pid ? u.dest : null }));
     const cities = [...this.cities.values()]
       .filter(c => p.explored.has(key(c.q, c.r)))
-      .map(c => ({ id: c.id, ownerId: c.ownerId, q: c.q, r: c.r, name: c.name, hp: Math.round(c.hp), maxHp: c.maxHp, buildings: c.buildings, capital: c.capital }));
+      .map(c => ({ id: c.id, ownerId: c.ownerId, q: c.q, r: c.r, name: c.name, hp: Math.round(c.hp), maxHp: c.maxHp, buildings: c.buildings, capital: c.capital, autoTrain: c.autoTrain }));
     const players = [...this.players.values()].map(o => ({
       id: o.id, name: o.name, civ: o.civ, isBot: o.isBot, alive: o.alive,
       points: Math.round(o.points),

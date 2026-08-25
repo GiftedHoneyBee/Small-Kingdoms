@@ -59,7 +59,8 @@ function startGame(room) {
   room.interval = setInterval(() => {
     const g = room.game;
     const now = Date.now();
-    if (now - lastIncome >= 1000) { lastIncome = now; g.income(); }
+    if (now - lastIncome >= 1000) { lastIncome = now; g.income(); g.autoTrainTick(); }
+    g.autoAttackTick();
     g.moveUnits();
     for (const b of room.bots) b.step(now);
     g.checkEnd();
@@ -146,6 +147,9 @@ wss.on('connection', (ws) => {
         if (!g) break;
         const pid = ws.playerId;
         if (m.action === 'move') g.actMove(pid, m.unitId, m.q, m.r);
+        else if (m.action === 'stop') g.actStop(pid, m.unitId);
+        else if (m.action === 'autoattack') g.actAutoAttack(pid, m.unitId, m.on);
+        else if (m.action === 'autotrain') g.actAutoTrain(pid, m.cityId, m.unit);
         else if (m.action === 'train') g.actTrain(pid, m.cityId, m.unit);
         else if (m.action === 'build') g.actBuild(pid, m.cityId, m.building);
         else if (m.action === 'research') g.actResearch(pid, m.tech);
