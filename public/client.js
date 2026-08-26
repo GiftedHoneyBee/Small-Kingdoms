@@ -499,10 +499,16 @@ addEventListener('mousemove', (e) => {
   last = { x: e.clientX, y: e.clientY };
 });
 addEventListener('mouseup', () => { dragging = false; });
-canvas.addEventListener('wheel', (e) => {
-  cam.scale = Math.max(14, Math.min(70, cam.scale * (e.deltaY < 0 ? 1.12 : 0.89)));
+function setZoom(factor) {
+  const next = Math.max(14, Math.min(70, cam.scale * factor));
+  const f = next / cam.scale;
+  cam.scale = next;
+  cam.x *= f; cam.y *= f; // keep the same tile centered
   needsDraw = true;
-});
+}
+canvas.addEventListener('wheel', (e) => setZoom(e.deltaY < 0 ? 1.12 : 0.89));
+$('zoom-in').onclick = () => setZoom(1.25);
+$('zoom-out').onclick = () => setZoom(0.8);
 canvas.addEventListener('click', (e) => {
   if (dragMoved || !state) return;
   const wx = e.clientX - canvas.width / 2 + cam.x;

@@ -383,6 +383,17 @@ class Game {
     return true;
   }
 
+  // path-aware enterability: `afloat` is whether the unit would be in a boat
+  // when standing on the tile it is stepping FROM. A land unit can plan a
+  // route that walks (even backwards) to a port zone, embarks there, crosses
+  // any open water and lands elsewhere.
+  canEnterFrom(u, afloat, t, zones) {
+    if (!t) return false;
+    if (t.terrain === 'mountain') return !!UNITS[u.type].canMountain && !afloat;
+    if (t.terrain === 'water') return afloat || zones.has(key(t.q, t.r));
+    return true;
+  }
+
   // A* toward dest. Allied-occupied tiles cost extra so big groups spread onto
   // longer roads instead of queueing on a narrow one. If the destination is
   // unreachable, returns the path to the closest reachable tile.
@@ -422,11 +433,13 @@ class Game {
       if (k === goalK) { bestK = k; break; }
       const h = hexDist({ q, r }, dest);
       if (h < bestH) { bestH = h; bestK = k; }
+      const curT = this.tile(q, r);
+      const afloat = (curT && curT.terrain === 'water') || (k === startK && u.boat);
       for (const [nq, nr] of neighbors(q, r)) {
         const nk = key(nq, nr);
         if (closed.has(nk)) continue;
         const t = this.tile(nq, nr);
-        if (!this.canEnter(u, t, zones)) continue;
+        if (!this.canEnterFrom(u, afloat, t, zones)) continue;
         const occ = occMap.get(nk);
         let cost = 1;
         if (occ && this.areAllies(u.ownerId, occ.ownerId)) cost += 4; // congestion penalty
