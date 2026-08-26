@@ -43,9 +43,9 @@ const UNITS = {
   warrior:  { name: 'Warrior',  cost: { food: 30, gold: 10 }, hp: 20, atk: 6, def: 4, moveMs: 1400, tech: null },
   scout:    { name: 'Scout',    cost: { food: 20, gold: 10 }, hp: 12, atk: 2, def: 2, moveMs: 800,  tech: null, vision: 2 },
   defender: { name: 'Defender', cost: { food: 25, stone: 15 }, hp: 28, atk: 3, def: 8, moveMs: 1800, tech: 'masonry' },
-  archer:   { name: 'Archer',   cost: { food: 25, wood: 20 }, hp: 16, atk: 8, def: 3, moveMs: 1400, tech: 'archery' },
+  archer:   { name: 'Archer',   cost: { food: 30, wood: 25 }, hp: 16, atk: 6, def: 3, moveMs: 1400, tech: 'archery', range: 2 },
   knight:   { name: 'Knight',   cost: { food: 40, gold: 35 }, hp: 24, atk: 11, def: 5, moveMs: 900, tech: 'chivalry' },
-  catapult: { name: 'Catapult', cost: { wood: 45, stone: 30 }, hp: 14, atk: 16, def: 1, moveMs: 2200, tech: 'engineering' },
+  catapult: { name: 'Catapult', cost: { wood: 55, stone: 40 }, hp: 14, atk: 16, def: 1, moveMs: 3200, tech: 'engineering', range: 3 },
   settler:  { name: 'Settler',  cost: { food: 60, gold: 30 }, hp: 10, atk: 0, def: 1, moveMs: 1800, tech: 'expansion' },
 };
 

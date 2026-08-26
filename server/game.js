@@ -327,6 +327,17 @@ class Game {
       if (!u.dest || now < u.nextMoveAt) continue;
       if (u.q === u.dest.q && u.r === u.dest.r) { u.dest = null; continue; }
       const p = this.player(u.ownerId);
+      // ranged units fire from distance once their destination is within range
+      const range = UNITS[u.type].range || 1;
+      if (range > 1 && hexDist(u, u.dest) <= range) {
+        const target = this.rangedTarget(u, range);
+        if (target) {
+          const civ2 = CIVS[p.civ];
+          u.nextMoveAt = now + UNITS[u.type].moveMs * (civ2.speedMult || 1) * this.moveMult;
+          this.rangedAttack(u, target);
+          continue;
+        }
+      }
       // greedy step toward dest
       let best = null; let bestD = Infinity;
       for (const [nq, nr] of neighbors(u.q, u.r)) {
@@ -358,6 +369,51 @@ class Game {
       this.reveal(p, u.q, u.r, UNITS[u.type].vision || 1);
       const t = this.tile(u.q, u.r);
       if (t.village) this.captureVillage(p, u, t);
+    }
+  }
+
+  rangedTarget(u, range) {
+    let best = null; let bestD = Infinity;
+    for (const e of this.units.values()) {
+      if (this.areAllies(u.ownerId, e.ownerId)) continue;
+      const d = hexDist(u, e);
+      if (d <= range && d < bestD) { bestD = d; best = { kind: 'unit', t: e }; }
+    }
+    if (!best) {
+      for (const c of this.cities.values()) {
+        if (this.areAllies(u.ownerId, c.ownerId)) continue;
+        const d = hexDist(u, c);
+        if (d <= range && d < bestD) { bestD = d; best = { kind: 'city', t: c }; }
+      }
+    }
+    return best;
+  }
+
+  rangedAttack(u, target) {
+    const ap = this.player(u.ownerId);
+    const aDef = UNITS[u.type];
+    if (target.kind === 'unit') {
+      const def = target.t;
+      const dp = this.player(def.ownerId);
+      const dDef = UNITS[def.type];
+      const defCity = this.cityAt(def.q, def.r);
+      const defense = dDef.def * (CIVS[dp.civ].defMult || 1) * (defCity ? 1.5 : 1);
+      const dmg = Math.max(2, Math.round(aDef.atk - defense / 2 + Math.random() * 4));
+      def.hp -= dmg; // no retaliation at range
+      if (def.hp <= 0) {
+        this.units.delete(def.id);
+        ap.points += GAME.points.kill; ap.kills++;
+        this.pushEvent(`${ap.name}'s ${aDef.name} shot down ${dp.name}'s ${dDef.name}!`);
+      }
+    } else {
+      const city = target.t;
+      if (Date.now() - this.startTime < GAME.peaceMs) return;
+      const cp = this.player(city.ownerId);
+      const walls = city.buildings.includes('walls') ? BUILDINGS.walls.defBonus : 0;
+      const atk = aDef.atk * (u.type === 'catapult' ? 1.5 : 1);
+      const dmg = Math.max(1, Math.round(atk - (3 + walls) / 2 * (CIVS[cp.civ].defMult || 1) + Math.random() * 3));
+      city.hp -= dmg; // no counter-damage at range
+      if (city.hp <= 0) this.captureCity(u, city);
     }
   }
 
@@ -399,17 +455,20 @@ class Game {
     city.hp -= dmg;
     u.hp -= Math.max(1, Math.round(3 + walls / 2 - aDef.def / 3));
     if (u.hp <= 0) { this.units.delete(u.id); return; }
-    if (city.hp <= 0) {
-      city.ownerId = u.ownerId;
-      city.hp = Math.round(city.maxHp / 2);
-      ap.points += GAME.points.city;
-      cp.points = Math.max(0, cp.points - GAME.points.city);
-      this.pushEvent(`${ap.name} conquered ${city.name} from ${cp.name}!`);
-      if (![...this.cities.values()].some(c => c.ownerId === cp.id)) {
-        cp.alive = false;
-        for (const un of [...this.units.values()]) if (un.ownerId === cp.id) this.units.delete(un.id);
-        this.pushEvent(`${cp.name} has been eliminated!`);
-      }
+    if (city.hp <= 0) this.captureCity(u, city);
+  }
+
+  captureCity(u, city) {
+    const ap = this.player(u.ownerId); const cp = this.player(city.ownerId);
+    city.ownerId = u.ownerId;
+    city.hp = Math.round(city.maxHp / 2);
+    ap.points += GAME.points.city;
+    cp.points = Math.max(0, cp.points - GAME.points.city);
+    this.pushEvent(`${ap.name} conquered ${city.name} from ${cp.name}!`);
+    if (![...this.cities.values()].some(c => c.ownerId === cp.id)) {
+      cp.alive = false;
+      for (const un of [...this.units.values()]) if (un.ownerId === cp.id) this.units.delete(un.id);
+      this.pushEvent(`${cp.name} has been eliminated!`);
     }
   }
 

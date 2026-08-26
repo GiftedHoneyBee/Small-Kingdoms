@@ -328,9 +328,9 @@ function renderWiki() {
   const el = $('wiki-content');
   let h = '<h4>Civilizations</h4><table><tr><th>Civ</th><th>Bonus</th></tr>';
   for (const c of Object.values(DEFS.civs)) h += `<tr><td><b>${c.name}</b></td><td>${c.desc}</td></tr>`;
-  h += '</table><h4>Units</h4><table><tr><th>Unit</th><th>Cost</th><th>HP</th><th>ATK</th><th>DEF</th><th>Speed</th><th>Vision</th><th>Requires</th></tr>';
+  h += '</table><h4>Units</h4><table><tr><th>Unit</th><th>Cost</th><th>HP</th><th>ATK</th><th>DEF</th><th>Range</th><th>Speed</th><th>Vision</th><th>Requires</th></tr>';
   for (const [k, d] of Object.entries(DEFS.units)) {
-    h += `<tr><td>${UNIT_ICONS[k]} <b>${d.name}</b></td><td>${costStr(d.cost)}</td><td>${d.hp}</td><td>${d.atk}</td><td>${d.def}</td><td>1 tile / ${(d.moveMs / 1000).toFixed(1)}s</td><td>${d.vision || 1}</td><td>${d.tech ? DEFS.techs[d.tech].name : '—'}</td></tr>`;
+    h += `<tr><td>${UNIT_ICONS[k]} <b>${d.name}</b></td><td>${costStr(d.cost)}</td><td>${d.hp}</td><td>${d.atk}</td><td>${d.def}</td><td>${d.range || 1}</td><td>1 tile / ${(d.moveMs / 1000).toFixed(1)}s</td><td>${d.vision || 1}</td><td>${d.tech ? DEFS.techs[d.tech].name : '—'}</td></tr>`;
   }
   h += '</table><h4>Buildings</h4><table><tr><th>Building</th><th>Cost</th><th>Effect</th><th>Points</th><th>Requires</th></tr>';
   for (const d of Object.values(DEFS.buildings)) {
@@ -423,6 +423,15 @@ canvas.addEventListener('dblclick', (e) => {
   const wx = e.clientX - canvas.width / 2 + cam.x;
   const wy = e.clientY - canvas.height / 2 + cam.y;
   const { q, r } = pxToHex(wx, wy);
+  // double-clicking an own city always selects it (deselecting any units)
+  const city = state.cities.find(c => c.q === q && c.r === r && c.ownerId === myId);
+  if (city) {
+    selected = { kind: 'city', id: city.id };
+    groupDest = null;
+    needsDraw = true;
+    renderSelectPanel(true);
+    return;
+  }
   const unit = state.units.find(u => u.q === q && u.r === r);
   if (unit && unit.ownerId === myId) {
     // select all own units of the same type
