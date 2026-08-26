@@ -3,10 +3,12 @@ const { UNITS, BUILDINGS, TECHS, TERRAIN } = require('./data');
 const { neighbors, hexDist, key } = require('./map');
 
 const LEVELS = {
-  passive: { actMs: 4500, aggro: 0, smart: 0.3, stay: true }, // tutorial opponent: grows economy, units never leave home
-  easy:   { actMs: 3500, aggro: 0.25, smart: 0.4 },
-  medium: { actMs: 2200, aggro: 0.5,  smart: 0.7 },
-  hard:   { actMs: 1200, aggro: 0.75, smart: 1.0 },
+  passive:  { actMs: 4500, aggro: 0, smart: 0.3, stay: true }, // tutorial opponent: grows economy, units never leave home
+  peaceful: { actMs: 2200, aggro: 0, smart: 0.7, avoid: true }, // grows and explores but never attacks and keeps distance
+  easy:     { actMs: 3500, aggro: 0.25, smart: 0.4 },
+  medium:   { actMs: 2200, aggro: 0.5,  smart: 0.7 },
+  hard:     { actMs: 1200, aggro: 0.75, smart: 1.0 },
+  insane:   { actMs: 500,  aggro: 0.95, smart: 1.0, unitCap: 3, focus: true }, // acts near-instantly, big armies, focused attacks
 };
 
 const CHAT_LINES = [
@@ -46,6 +48,14 @@ class Bot {
         return;
       }
     }
+    // smart bots spend surplus science on unit/building upgrades
+    if (this.cfg.smart >= 0.7 && p.res.science > 50) {
+      const owned = new Set([...g.units.values()].filter(u => u.ownerId === p.id).map(u => u.type));
+      const unit = ['knight', 'archer', 'warrior', 'defender'].find(t => owned.has(t));
+      if (unit) { g.actUpgrade(p.id, 'unit', unit); return; }
+      const built = this.myCities(p).flatMap(c => c.buildings);
+      if (built.length) g.actUpgrade(p.id, 'building', built[Math.floor(Math.random() * built.length)]);
+    }
   }
 
   myCities(p) {
@@ -74,7 +84,7 @@ class Bot {
     const wantSettler = p.techs.has('expansion') && cities.length < 3 &&
       !myUnits.some(u => u.type === 'settler');
     if (wantSettler && g.canAfford(p, UNITS.settler.cost)) { g.actTrain(p.id, c.id, 'settler'); return; }
-    if (myUnits.length < 3 + cities.length * 2) {
+    if (myUnits.length < 3 + cities.length * (this.cfg.unitCap || 2)) {
       const prefs = ['knight', 'archer', 'giant', 'defender', 'warrior', 'scout'];
       for (const t of prefs) {
         const def = UNITS[t];
@@ -102,20 +112,42 @@ class Bot {
         continue;
       }
       const nearVillage = villages.sort((a, b) => hexDist(a, u) - hexDist(b, u))[0];
-      if (nearVillage && (u.type === 'scout' || Math.random() < 0.5)) {
+      if (nearVillage && (u.type === 'scout' || Math.random() < 0.5) &&
+          (!this.cfg.avoid || !this.nearEnemy(p, nearVillage))) {
         g.actMove(p.id, u.id, nearVillage.q, nearVillage.r);
         continue;
       }
       const peaceOver = Date.now() - g.startTime > 100 * 1000;
       if (peaceOver && Math.random() < this.cfg.aggro && enemyCities.length) {
-        const t = enemyCities.sort((a, b) => hexDist(a, u) - hexDist(b, u))[0];
+        // focused bots gang up on the weakest known enemy city; others hit the nearest
+        const t = this.cfg.focus
+          ? enemyCities.sort((a, b) => a.hp - b.hp || hexDist(a, u) - hexDist(b, u))[0]
+          : enemyCities.sort((a, b) => hexDist(a, u) - hexDist(b, u))[0];
         g.actMove(p.id, u.id, t.q, t.r);
         continue;
       }
       // explore: move toward a random unexplored-ish direction
-      const cand = [...g.tiles.values()][Math.floor(Math.random() * g.tiles.size)];
+      let cand = [...g.tiles.values()][Math.floor(Math.random() * g.tiles.size)];
+      if (this.cfg.avoid) {
+        for (let tries = 0; cand && this.nearEnemy(p, cand) && tries < 8; tries++) {
+          cand = [...g.tiles.values()][Math.floor(Math.random() * g.tiles.size)];
+        }
+        if (cand && this.nearEnemy(p, cand)) continue; // nowhere safe to go right now
+      }
       if (cand && TERRAIN[cand.terrain].move) g.actMove(p.id, u.id, cand.q, cand.r);
     }
+  }
+
+  // is a tile within 2 hexes of any enemy unit or city? (peaceful bots keep away)
+  nearEnemy(p, t) {
+    const g = this.game;
+    for (const u of g.units.values()) {
+      if (!g.areAllies(p.id, u.ownerId) && hexDist(u, t) <= 2) return true;
+    }
+    for (const c of g.cities.values()) {
+      if (!g.areAllies(p.id, c.ownerId) && hexDist(c, t) <= 2) return true;
+    }
+    return false;
   }
 
   findSettleSpot(p, u) {

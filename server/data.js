@@ -84,6 +84,14 @@ const TECHS = {
   mountainlore:{ name: 'Mountain Lore', cost: 24, req: 'masonry', unlocks: 'Mountain Giant unit' },
 };
 
+// unit/building upgrade levels: each level gives +5% (attack/hp/def for units,
+// production for buildings); cost in science scales 1.25x per level
+const UPGRADES = {
+  unitBase: 12, buildingBase: 10, bonusPerLevel: 0.05, costGrowth: 1.25, maxLevel: 20,
+};
+function upgradeCost(base, level) { return Math.ceil(base * Math.pow(UPGRADES.costGrowth, level)); }
+function upgradeMult(level) { return 1 + UPGRADES.bonusPerLevel * (level || 0); }
+
 const GAME = {
   durationMs: 10 * 60 * 1000,
   pointsToWin: 1500,
@@ -94,4 +102,4 @@ const GAME = {
   points: { tech: 12, city: 40, kill: 8, tileExplored: 0.05 },
 };
 
-module.exports = { CIVS, TERRAIN, BONUSES, UNITS, BUILDINGS, TECHS, GAME, BOAT };
+module.exports = { CIVS, TERRAIN, BONUSES, UNITS, BUILDINGS, TECHS, GAME, BOAT, UPGRADES, upgradeCost, upgradeMult };

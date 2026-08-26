@@ -1,6 +1,6 @@
 // Real-time game engine. All mutation happens here; server/index.js routes
 // socket messages to actions, bots call the same actions.
-const { CIVS, TERRAIN, UNITS, BUILDINGS, TECHS, GAME, BOAT } = require('./data');
+const { CIVS, TERRAIN, UNITS, BUILDINGS, TECHS, GAME, BOAT, UPGRADES, upgradeCost, upgradeMult } = require('./data');
 const { generateMap, neighbors, hexDist, key } = require('./map');
 
 let nextId = 1;
@@ -38,6 +38,7 @@ class Game {
         res: { food: 40, wood: 25, stone: 15, gold: 25, science: 0 },
         techs: new Set(), explored: new Set(), points: 0, kills: 0,
         alive: true, allies: new Set(), allyRequests: new Set(),
+        upgrades: { unit: {}, building: {} },
       };
       const civ = CIVS[p.civ];
       if (civ.startTech) p.techs.add(civ.startTech);
@@ -95,9 +96,10 @@ class Game {
     }
     if (!spot) return null;
     const def = UNITS[type];
+    const hp = Math.round(def.hp * upgradeMult(this.unitLevel(ownerId, type)));
     const u = {
       id: uid('u'), ownerId, type, q: spot[0], r: spot[1],
-      hp: def.hp, maxHp: def.hp, nextMoveAt: 0, dest: null, autoAttack: 0,
+      hp, maxHp: hp, nextMoveAt: 0, dest: null, autoAttack: 0,
       boat: false, path: null, pathGoal: null,
     };
     this.units.set(u.id, u);
@@ -150,10 +152,13 @@ class Game {
     u.autoAttack = [0, 3, 6, 9].includes(range) ? range : (range ? 3 : 0);
   }
 
-  // attack value with civ modifiers applied
+  unitLevel(pid, type) { return this.player(pid)?.upgrades.unit[type] || 0; }
+  buildingLevel(pid, b) { return this.player(pid)?.upgrades.building[b] || 0; }
+
+  // attack value with civ and upgrade modifiers applied
   attackOf(u, stats) {
     const civ = CIVS[this.player(u.ownerId).civ];
-    let atk = stats.atk * (civ.atkMult || 1);
+    let atk = stats.atk * (civ.atkMult || 1) * upgradeMult(this.unitLevel(u.ownerId, u.type));
     if (u.boat) atk += civ.boatAtkBonus || 0;
     else {
       atk *= civ.landAtkMult || 1;
@@ -167,6 +172,34 @@ class Game {
     const d = UNITS[u.type];
     if (!u.boat) return d;
     return { name: `${d.name} (boat)`, atk: BOAT.atk, def: BOAT.def, range: BOAT.range, moveMs: BOAT.moveMs, vision: d.vision };
+  }
+
+  // defense value with civ and upgrade modifiers applied
+  defenseOf(u, stats, inCity) {
+    const civ = CIVS[this.player(u.ownerId).civ];
+    return stats.def * (civ.defMult || 1) * upgradeMult(this.unitLevel(u.ownerId, u.type)) * (inCity ? 1.5 : 1);
+  }
+
+  actUpgrade(pid, kind, type) {
+    const p = this.player(pid);
+    if (!p || this.over || !p.alive) return;
+    if (kind !== 'unit' && kind !== 'building') return;
+    if (kind === 'unit' ? !UNITS[type] : !BUILDINGS[type]) return;
+    const lvl = p.upgrades[kind][type] || 0;
+    if (lvl >= UPGRADES.maxLevel) return;
+    const cost = upgradeCost(kind === 'unit' ? UPGRADES.unitBase : UPGRADES.buildingBase, lvl);
+    if (p.res.science < cost) return;
+    p.res.science -= cost;
+    p.upgrades[kind][type] = lvl + 1;
+    // existing units of that type get the extra hp immediately
+    if (kind === 'unit') {
+      for (const u of this.units.values()) {
+        if (u.ownerId !== pid || u.type !== type) continue;
+        const newMax = Math.round(UNITS[type].hp * upgradeMult(lvl + 1));
+        u.hp += newMax - u.maxHp;
+        u.maxHp = newMax;
+      }
+    }
   }
 
   actAutoTrain(pid, cityId, type) {
@@ -332,8 +365,9 @@ class Game {
         }
         for (const b of c.buildings) {
           const bd = BUILDINGS[b];
-          if (bd.income) for (const [k, v] of Object.entries(bd.income)) inc[k] += v * eff;
-          if (bd.pointsPerSec) p.points += bd.pointsPerSec;
+          const up = upgradeMult(this.buildingLevel(p.id, b));
+          if (bd.income) for (const [k, v] of Object.entries(bd.income)) inc[k] += v * eff * up;
+          if (bd.pointsPerSec) p.points += bd.pointsPerSec * up;
         }
         // cities slowly heal
         c.hp = Math.min(c.maxHp, c.hp + 1);
@@ -559,7 +593,7 @@ class Game {
       const dp = this.player(def.ownerId);
       const dDef = this.unitStats(def);
       const defCity = this.cityAt(def.q, def.r);
-      const defense = dDef.def * (CIVS[dp.civ].defMult || 1) * (defCity ? 1.5 : 1);
+      const defense = this.defenseOf(def, dDef, !!defCity);
       const dmg = Math.max(2, Math.round(this.attackOf(u, aDef) - defense / 2 + Math.random() * 4));
       def.hp -= dmg; // no retaliation at range
       if (def.hp <= 0) {
@@ -571,7 +605,7 @@ class Game {
       const city = target.t;
       if (Date.now() - this.startTime < GAME.peaceMs) return;
       const cp = this.player(city.ownerId);
-      const walls = city.buildings.includes('walls') ? BUILDINGS.walls.defBonus : 0;
+      const walls = city.buildings.includes('walls') ? BUILDINGS.walls.defBonus * upgradeMult(this.buildingLevel(city.ownerId, 'walls')) : 0;
       const atk = this.attackOf(u, aDef) * (u.type === 'catapult' ? 1.5 : 1);
       const dmg = Math.max(1, Math.round(atk - (3 + walls) / 2 * (CIVS[cp.civ].defMult || 1) + Math.random() * 3));
       city.hp -= dmg; // no counter-damage at range
@@ -590,7 +624,7 @@ class Game {
     const aDef = this.unitStats(att); const dDef = this.unitStats(def);
     let atk = this.attackOf(att, aDef);
     const defCity = this.cityAt(def.q, def.r);
-    let defense = dDef.def * (CIVS[dp.civ].defMult || 1) * (defCity ? 1.5 : 1);
+    let defense = this.defenseOf(def, dDef, !!defCity);
     const dmg = Math.max(2, Math.round(atk - defense / 2 + Math.random() * 4));
     def.hp -= dmg;
     if (def.hp <= 0) {
@@ -611,7 +645,7 @@ class Game {
     if (Date.now() - this.startTime < GAME.peaceMs) return; // early peace period
     const ap = this.player(u.ownerId); const cp = this.player(city.ownerId);
     const aDef = this.unitStats(u);
-    const walls = city.buildings.includes('walls') ? BUILDINGS.walls.defBonus : 0;
+    const walls = city.buildings.includes('walls') ? BUILDINGS.walls.defBonus * upgradeMult(this.buildingLevel(city.ownerId, 'walls')) : 0;
     const atk = this.attackOf(u, aDef) * (u.type === 'catapult' && !u.boat ? 1.5 : 1);
     const dmg = Math.max(1, Math.round(atk - (3 + walls) / 2 * (CIVS[cp.civ].defMult || 1) + Math.random() * 3));
     city.hp -= dmg;
@@ -673,7 +707,7 @@ class Game {
     }
     const units = [...this.units.values()]
       .filter(u => p.explored.has(key(u.q, u.r)))
-      .map(u => ({ id: u.id, ownerId: u.ownerId, type: u.type, q: u.q, r: u.r, hp: Math.round(u.hp), maxHp: u.maxHp, autoAttack: u.autoAttack, boat: u.boat, dest: u.ownerId === pid ? u.dest : null }));
+      .map(u => ({ id: u.id, ownerId: u.ownerId, type: u.type, q: u.q, r: u.r, hp: Math.round(u.hp), maxHp: u.maxHp, autoAttack: u.autoAttack, boat: u.boat, dest: u.ownerId === pid ? u.dest : null, level: this.unitLevel(u.ownerId, u.type) }));
     const cities = [...this.cities.values()]
       .filter(c => p.explored.has(key(c.q, c.r)))
       .map(c => ({ id: c.id, ownerId: c.ownerId, q: c.q, r: c.r, name: c.name, hp: Math.round(c.hp), maxHp: c.maxHp, buildings: c.buildings, capital: c.capital, autoTrain: c.autoTrain }));
@@ -688,6 +722,7 @@ class Game {
       you: pid,
       res: Object.fromEntries(Object.entries(p.res).map(([k, v]) => [k, Math.floor(v)])),
       techs: [...p.techs],
+      upgrades: p.upgrades,
       tiles: visibleTiles, units, cities, players,
       timeLeft: this.timeLeft(),
       over: this.over, winner: this.winner,

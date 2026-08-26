@@ -3,7 +3,7 @@
  * LocalSocket that runs the whole "server" inside the browser. */
 const { Game } = require('../server/game');
 const { Bot } = require('../server/bot');
-const { CIVS, UNITS, BUILDINGS, TECHS, GAME, BOAT } = require('../server/data');
+const { CIVS, UNITS, BUILDINGS, TECHS, GAME, BOAT, UPGRADES } = require('../server/data');
 
 const BOT_NAMES = ['Ada', 'Brutus', 'Cleo', 'Darius', 'Elena', 'Falco', 'Gaius', 'Hilda', 'Ivar', 'Juno'];
 const sanitize = s => String(s || '').replace(/[<>]/g, '').slice(0, 20);
@@ -17,7 +17,7 @@ class LocalSocket {
     this.room = null;
     this.nextBot = 1;
     setTimeout(() => {
-      this._emit({ type: 'defs', civs: CIVS, units: UNITS, buildings: BUILDINGS, techs: TECHS, game: GAME, boat: BOAT, you: this.playerId });
+      this._emit({ type: 'defs', civs: CIVS, units: UNITS, buildings: BUILDINGS, techs: TECHS, game: GAME, boat: BOAT, upgrades: UPGRADES, you: this.playerId });
       this._emit({ type: 'rooms', rooms: [] });
     }, 0);
   }
@@ -60,7 +60,7 @@ class LocalSocket {
         r.players.push({
           id: `bot${this.nextBot}`, name: `${BOT_NAMES[this.nextBot % BOT_NAMES.length]} (bot)`,
           civ: civKeys[Math.floor(Math.random() * civKeys.length)],
-          isBot: true, botLevel: ['easy', 'medium', 'hard', 'passive'].includes(m.level) ? m.level : 'medium',
+          isBot: true, botLevel: ['peaceful', 'easy', 'medium', 'hard', 'insane', 'passive'].includes(m.level) ? m.level : 'medium',
         });
         this.nextBot++;
         this._lobby();
@@ -83,6 +83,7 @@ class LocalSocket {
         else if (m.action === 'train') g.actTrain(pid, m.cityId, m.unit);
         else if (m.action === 'build') g.actBuild(pid, m.cityId, m.building);
         else if (m.action === 'research') g.actResearch(pid, m.tech);
+        else if (m.action === 'upgrade') g.actUpgrade(pid, m.kind, m.target);
         else if (m.action === 'found') g.actFoundCity(pid, m.unitId);
         else if (m.action === 'ally') g.actAlly(pid, m.target, !!m.accept);
         break;

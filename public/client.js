@@ -209,7 +209,9 @@ function renderSelectPanel(force = false) {
       const u = us[0];
       const def = DEFS.units[u.type];
       const boatTag = u.boat ? ` 🛶 in boat (ATK ${DEFS.boat.atk} · range ${DEFS.boat.range})` : '';
-      el.innerHTML = `<h4>${UNIT_ICONS[u.type]} ${def.name}${boatTag}</h4>HP ${u.hp}/${u.maxHp} · ATK ${def.atk} · DEF ${def.def}<br><small>Click a tile to move (click destination again to cancel). Click more of your units to group. Double-click a selected unit to select all of that type. Esc deselects.</small>`;
+      const um = 1 + (u.level || 0) * DEFS.upgrades.bonusPerLevel;
+      const lvlTag = u.level ? ` · ⬆️ Lv ${u.level}` : '';
+      el.innerHTML = `<h4>${UNIT_ICONS[u.type]} ${def.name}${boatTag}${lvlTag}</h4>HP ${u.hp}/${u.maxHp} · ATK ${(def.atk * um).toFixed(1)} · DEF ${(def.def * um).toFixed(1)}<br><small>Click a tile to move (click destination again to cancel). Click more of your units to group. Double-click a selected unit to select all of that type. Esc deselects.</small>`;
     } else {
       el.innerHTML = `<h4>${us.length} units selected</h4>` +
         us.map(u => `${UNIT_ICONS[u.type]} ${DEFS.units[u.type].name}${u.boat ? ' 🛶' : ''} (${u.hp}/${u.maxHp})`).join('<br>') +
@@ -235,7 +237,7 @@ function renderSelectPanel(force = false) {
   } else {
     const c = state.cities.find(c => c.id === selected.id);
     if (!c || c.ownerId !== myId) { selected = null; renderSelectPanel(true); return; }
-    el.innerHTML = `<h4>🏙️ ${c.name}${c.capital ? ' ★' : ''}</h4>HP ${c.hp}/${c.maxHp}<br>Buildings: ${c.buildings.length ? c.buildings.join(', ') : 'none'}<br><b>Train units</b>`;
+    el.innerHTML = `<h4>🏙️ ${c.name}${c.capital ? ' ★' : ''}</h4>HP ${c.hp}/${c.maxHp}<br>Buildings: ${c.buildings.length ? c.buildings.map(b => { const l = (state.upgrades && state.upgrades.building[b]) || 0; return l ? `${b} (Lv ${l})` : b; }).join(', ') : 'none'}<br><b>Train units</b>`;
     for (const [k, d] of Object.entries(DEFS.units)) {
       const locked = d.tech && !state.techs.includes(d.tech);
       const b = document.createElement('button');
@@ -294,26 +296,62 @@ function canAfford(cost) { return Object.entries(cost).every(([k, v]) => state.r
 $('tech-btn').onclick = () => { $('tech-modal').classList.remove('hidden'); renderTechModal(); };
 $('tech-close').onclick = () => $('tech-modal').classList.add('hidden');
 let techKey = '';
+let techTab = 'techs';
+for (const b of document.querySelectorAll('#tech-tabs .tab')) {
+  b.onclick = () => {
+    techTab = b.dataset.tab;
+    for (const o of document.querySelectorAll('#tech-tabs .tab')) o.classList.toggle('active', o === b);
+    techKey = '';
+    renderTechModal();
+  };
+}
+function upgradeCost(base, level) { return Math.ceil(base * Math.pow(DEFS.upgrades.costGrowth, level)); }
 function renderTechModal() {
   if ($('tech-modal').classList.contains('hidden') || !state) return;
-  const k = JSON.stringify([state.res.science, state.techs]);
+  const k = JSON.stringify([techTab, state.res.science, state.techs, state.upgrades]);
   if (k === techKey) return;
   techKey = k;
   $('sci-have').textContent = `— 🔬 ${state.res.science}`;
   const el = $('tech-list');
   el.innerHTML = '';
-  for (const [k, t] of Object.entries(DEFS.techs)) {
-    const have = state.techs.includes(k);
-    const reqOk = !t.req || state.techs.includes(t.req);
-    const d = document.createElement('div');
-    d.className = 'tech-row' + (have ? ' done' : '');
-    d.innerHTML = `<div><b>${t.name}</b> (🔬${t.cost})<small>${t.unlocks}${t.req ? ` · requires ${DEFS.techs[t.req].name}` : ''}</small></div>`;
+  if (techTab === 'techs') {
+    for (const [k, t] of Object.entries(DEFS.techs)) {
+      const have = state.techs.includes(k);
+      const reqOk = !t.req || state.techs.includes(t.req);
+      const d = document.createElement('div');
+      d.className = 'tech-row' + (have ? ' done' : '');
+      d.innerHTML = `<div><b>${t.name}</b> (🔬${t.cost})<small>${t.unlocks}${t.req ? ` · requires ${DEFS.techs[t.req].name}` : ''}</small></div>`;
+      const b = document.createElement('button');
+      b.textContent = have ? 'Done' : 'Research';
+      b.disabled = have || !reqOk || state.res.science < t.cost;
+      b.onclick = () => sendAction({ action: 'research', tech: k });
+      d.appendChild(b);
+      el.appendChild(d);
+    }
+    return;
+  }
+  // upgrade tabs: +5% per level (attack/hp/def for units, production for buildings), 1.25x cost per level
+  const isUnits = techTab === 'units';
+  const defs = isUnits ? DEFS.units : DEFS.buildings;
+  const base = isUnits ? DEFS.upgrades.unitBase : DEFS.upgrades.buildingBase;
+  const levels = (state.upgrades && state.upgrades[isUnits ? 'unit' : 'building']) || {};
+  const note = document.createElement('div');
+  note.innerHTML = `<small>Each level: ${isUnits ? '+5% attack, HP and defense' : '+5% production'}. Cost rises 1.25× per level.</small>`;
+  el.appendChild(note);
+  for (const [k, d] of Object.entries(defs)) {
+    const lvl = levels[k] || 0;
+    const cost = upgradeCost(base, lvl);
+    const maxed = lvl >= DEFS.upgrades.maxLevel;
+    const row = document.createElement('div');
+    row.className = 'tech-row';
+    const icon = isUnits ? UNIT_ICONS[k] : '🏗️';
+    row.innerHTML = `<div><b>${icon} ${d.name}</b> — Lv ${lvl} (+${lvl * 5}%)<small>${maxed ? 'Max level reached' : `Next level: 🔬${cost}`}</small></div>`;
     const b = document.createElement('button');
-    b.textContent = have ? 'Done' : 'Research';
-    b.disabled = have || !reqOk || state.res.science < t.cost;
-    b.onclick = () => sendAction({ action: 'research', tech: k });
-    d.appendChild(b);
-    el.appendChild(d);
+    b.textContent = maxed ? 'Max' : `Upgrade (🔬${cost})`;
+    b.disabled = maxed || state.res.science < cost;
+    b.onclick = () => sendAction({ action: 'upgrade', kind: isUnits ? 'unit' : 'building', target: k });
+    row.appendChild(b);
+    el.appendChild(row);
   }
 }
 
@@ -664,8 +702,10 @@ function render() {
       GFX.drawCity(ctx, x, y, cam.scale, myColor(c.ownerId), c.capital, c.buildings.length);
     } else {
       drawHex(x, y, cam.scale * 0.96, null, myColor(c.ownerId));
-      ctx.font = `${cam.scale * 0.8}px sans-serif`; ctx.textAlign = 'center';
-      ctx.fillText(c.capital ? '🏰' : '🏙️', x, y + cam.scale * 0.28);
+      // city emoji grows with the number of buildings
+      const cgrow = Math.min(1.3, 0.7 + c.buildings.length * 0.08);
+      ctx.font = `${cam.scale * cgrow}px sans-serif`; ctx.textAlign = 'center';
+      ctx.fillText(c.capital ? '🏰' : '🏙️', x, y + cam.scale * 0.28 * cgrow);
     }
     ctx.font = `bold ${Math.max(10, cam.scale * 0.32)}px sans-serif`;
     ctx.textAlign = 'center';
@@ -697,6 +737,7 @@ function render() {
     if (blocky) {
       if (u.boat) GFX.drawBoat(ctx, x, y, cam.scale, myColor(u.ownerId));
       else GFX.drawUnit(ctx, x, y, cam.scale, u.type, myColor(u.ownerId));
+      GFX.drawLevel(ctx, x, y - cam.scale * 0.62, cam.scale, u.level);
     } else {
       ctx.beginPath();
       ctx.arc(x, y, cam.scale * 0.42, 0, Math.PI * 2);
@@ -704,6 +745,11 @@ function render() {
       ctx.strokeStyle = '#0d1420'; ctx.stroke();
       ctx.font = `${cam.scale * 0.5}px sans-serif`; ctx.textAlign = 'center';
       ctx.fillText(u.boat ? '🛶' : UNIT_ICONS[u.type], x, y + cam.scale * 0.17);
+      if (u.level) {
+        ctx.font = `bold ${Math.max(9, cam.scale * 0.28)}px sans-serif`;
+        ctx.fillStyle = '#ffd54a';
+        ctx.fillText(`Lv${u.level}`, x, y - cam.scale * 0.5);
+      }
     }
     drawBar(x, y + cam.scale * 0.55, u.hp / u.maxHp);
     if (selected && selected.kind === 'units' && selected.ids.includes(u.id)) {

@@ -4,7 +4,7 @@ const http = require('http');
 const { WebSocketServer } = require('ws');
 const { Game } = require('./game');
 const { Bot } = require('./bot');
-const { CIVS, UNITS, BUILDINGS, TECHS, GAME, BOAT } = require('./data');
+const { CIVS, UNITS, BUILDINGS, TECHS, GAME, BOAT, UPGRADES } = require('./data');
 
 const app = express();
 app.use(express.static(path.join(__dirname, '..', 'public'), {
@@ -80,7 +80,7 @@ function startGame(room, opts = {}) {
 wss.on('connection', (ws) => {
   ws.playerId = `p${Math.random().toString(36).slice(2, 10)}`;
   ws.roomId = null;
-  send(ws, { type: 'defs', civs: CIVS, units: UNITS, buildings: BUILDINGS, techs: TECHS, game: GAME, boat: BOAT, you: ws.playerId });
+  send(ws, { type: 'defs', civs: CIVS, units: UNITS, buildings: BUILDINGS, techs: TECHS, game: GAME, boat: BOAT, upgrades: UPGRADES, you: ws.playerId });
   send(ws, roomList());
 
   ws.on('message', (raw) => {
@@ -124,7 +124,7 @@ wss.on('connection', (ws) => {
         room.players.push({
           id: `bot${nextBot}`, name: `${BOT_NAMES[nextBot % BOT_NAMES.length]} (bot)`,
           civ: civKeys[Math.floor(Math.random() * civKeys.length)],
-          isBot: true, botLevel: ['easy', 'medium', 'hard', 'passive'].includes(m.level) ? m.level : 'medium', ws: null,
+          isBot: true, botLevel: ['peaceful', 'easy', 'medium', 'hard', 'insane', 'passive'].includes(m.level) ? m.level : 'medium', ws: null,
         });
         nextBot++;
         broadcastLobby(room);
@@ -153,6 +153,7 @@ wss.on('connection', (ws) => {
         else if (m.action === 'train') g.actTrain(pid, m.cityId, m.unit);
         else if (m.action === 'build') g.actBuild(pid, m.cityId, m.building);
         else if (m.action === 'research') g.actResearch(pid, m.tech);
+        else if (m.action === 'upgrade') g.actUpgrade(pid, m.kind, m.target);
         else if (m.action === 'found') g.actFoundCity(pid, m.unitId);
         else if (m.action === 'ally') g.actAlly(pid, m.target, !!m.accept);
         break;

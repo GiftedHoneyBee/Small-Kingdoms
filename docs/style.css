@@ -49,6 +49,9 @@ button.primary:hover { background: #e0a83d; }
 .tech-row { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid #2e3d55; font-size: 13px; }
 .tech-row small { color: #93a4bd; display: block; }
 .tech-row.done { opacity: .5; }
+#tech-tabs { display: flex; gap: 6px; margin-bottom: 8px; }
+#tech-tabs .tab { flex: 1; background: #1b2940; border: 1px solid #2e3d55; color: #93a4bd; padding: 5px 4px; border-radius: 6px; cursor: pointer; font-size: 12px; }
+#tech-tabs .tab.active { background: #2e3d55; color: #fff; border-color: #ffd54a; }
 
 #events { position: absolute; left: 12px; bottom: 12px; z-index: 6; pointer-events: none; }
 #events div { background: rgba(26,35,51,.92); border-left: 3px solid #ffd76e; padding: 6px 10px; margin-top: 4px; border-radius: 4px; font-size: 13px; }

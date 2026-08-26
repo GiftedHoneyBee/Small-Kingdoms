@@ -56,9 +56,11 @@
             <option value="mountainpass">Mountain pass</option>
           </select>
           <select id="bot-level">
+            <option value="peaceful">Peaceful bot</option>
             <option value="easy">Easy bot</option>
             <option value="medium" selected>Medium bot</option>
             <option value="hard">Hard bot</option>
+            <option value="insane">Insane bot</option>
           </select>
           <button id="add-bot-btn">Add bot</button>
           <button id="remove-bot-btn">Remove bot</button>
@@ -106,6 +108,11 @@
     <div id="tech-modal" class="modal hidden">
       <div class="panel">
         <h3>Research <span id="sci-have"></span></h3>
+        <div class="row" id="tech-tabs">
+          <button data-tab="techs" class="tab active">🔬 Techs</button>
+          <button data-tab="units" class="tab">⚔️ Unit upgrades</button>
+          <button data-tab="buildings" class="tab">🏗️ Building upgrades</button>
+        </div>
         <div id="tech-list"></div>
         <button id="tech-close">Close</button>
       </div>

@@ -216,12 +216,14 @@
   }
 
   function drawCity(ctx, x, y, s, color, capital, nBuildings) {
-    // cluster of blocky houses; capital gets a tower + flag
-    const houses = Math.min(4, 2 + Math.floor((nBuildings || 0) / 2));
-    const spots = [[-0.3, 0.12], [0.28, 0.08], [-0.02, 0.3], [0.05, -0.18]];
+    // cluster of blocky houses that grows with every building; capital gets a tower + flag
+    const n = nBuildings || 0;
+    const houses = Math.min(8, 1 + n);
+    const spots = [[-0.3, 0.12], [0.28, 0.08], [-0.02, 0.3], [0.05, -0.18], [-0.38, -0.14], [0.4, 0.28], [-0.16, 0.42], [0.22, -0.3]];
+    const grow = 1 + Math.min(0.35, n * 0.05); // houses get bigger as the city grows
     for (let i = 0; i < houses; i++) {
       const [dx, dy] = spots[i];
-      drawHouse(ctx, x + dx * s, y + dy * s, s * 0.34, color);
+      drawHouse(ctx, x + dx * s, y + dy * s, s * 0.3 * grow, color);
     }
     if (capital) {
       // tower
@@ -262,6 +264,22 @@
     // door
     ctx.fillStyle = '#7a5a38';
     ctx.fillRect(x - h * 0.1, y - h * 0.2, h * 0.2, h * 0.25);
+  }
+
+  // small gold chevrons above a unit showing its upgrade level
+  function drawLevel(ctx, x, y, s, level) {
+    if (!level) return;
+    const n = Math.min(5, level);
+    const w = s * 0.12;
+    ctx.strokeStyle = '#ffd54a'; ctx.lineWidth = Math.max(1, s * 0.045);
+    for (let i = 0; i < n; i++) {
+      const cy = y - i * s * 0.09;
+      ctx.beginPath();
+      ctx.moveTo(x - w, cy);
+      ctx.lineTo(x, cy - s * 0.08);
+      ctx.lineTo(x + w, cy);
+      ctx.stroke();
+    }
   }
 
   // blocky little person; per-type accessory drawn with shapes
@@ -408,5 +426,5 @@
     ctx.closePath();
   }
 
-  window.GFX = { drawTile, drawBonus, drawVillage, drawCity, drawUnit, drawBoat, drawAnchor, shade, setTime };
+  window.GFX = { drawTile, drawBonus, drawVillage, drawCity, drawUnit, drawBoat, drawAnchor, drawLevel, shade, setTime };
 })();
