@@ -122,6 +122,12 @@
   <div id="settings-modal" class="modal hidden">
     <div class="panel">
       <h3>⚙️ Settings</h3>
+      <label class="setting-row">Graphics style
+        <select id="set-graphics">
+          <option value="new">New (blocky, Polytopia-style)</option>
+          <option value="classic">Classic (flat tiles + emoji)</option>
+        </select>
+      </label>
       <label class="setting-row"><input type="checkbox" id="set-arrows"> Show movement arrows (planned unit paths)</label>
       <label class="setting-row"><input type="checkbox" id="set-autoselect"> Auto-select newly trained units</label>
       <button id="settings-close">Close</button>
@@ -151,6 +157,7 @@
     </div>
   </div>
 
+<script src="graphics.js"></script>
 <script src="client.js"></script>
 </body>
 </html>

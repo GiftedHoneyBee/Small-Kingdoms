@@ -15,7 +15,7 @@ const seenEvents = new Set();
 const knownUnitIds = new Set();
 
 // session-persistent settings
-const SETTINGS = Object.assign({ arrows: false, autoSelect: false },
+const SETTINGS = Object.assign({ arrows: false, autoSelect: false, graphics: 'new' },
   JSON.parse(sessionStorage.getItem('me-settings') || '{}'));
 function saveSettings() { sessionStorage.setItem('me-settings', JSON.stringify(SETTINGS)); }
 
@@ -320,8 +320,10 @@ $('settings-btn').onclick = () => $('settings-modal').classList.remove('hidden')
 $('settings-close').onclick = () => $('settings-modal').classList.add('hidden');
 $('set-arrows').checked = SETTINGS.arrows;
 $('set-autoselect').checked = SETTINGS.autoSelect;
+$('set-graphics').value = SETTINGS.graphics;
 $('set-arrows').onchange = (e) => { SETTINGS.arrows = e.target.checked; saveSettings(); needsDraw = true; };
 $('set-autoselect').onchange = (e) => { SETTINGS.autoSelect = e.target.checked; saveSettings(); };
+$('set-graphics').onchange = (e) => { SETTINGS.graphics = e.target.value; saveSettings(); needsDraw = true; };
 
 // wiki modal
 $('wiki-btn').onclick = () => { renderWiki(); $('wiki-modal').classList.remove('hidden'); };
@@ -362,7 +364,7 @@ function renderWiki() {
     <li><b>Drag</b> to pan the map, <b>mouse wheel</b> to zoom.</li>
     <li><b>Auto-attack</b> button cycles OFF → ≤3 → ≤6 → ≤9 tiles → OFF (units chase enemies they detect in that radius).</li>
     <li><b>Auto-train</b> dropdown in a city keeps training a unit whenever affordable.</li>
-    <li><b>Settings</b> (⚙️ in menu): movement arrows show each unit's planned destination; auto-select puts newly trained units into your selection. Saved for the whole session.</li>
+    <li><b>Settings</b> (⚙️ in menu): switch between New (blocky) and Classic graphics; movement arrows show each unit's planned destination; auto-select puts newly trained units into your selection. Saved for the whole session.</li>
   </ul><h4>Rules</h4><ul>
     <li>Income is generated every second from your cities, surrounding terrain and buildings. Extra cities give diminishing returns (each additional city produces 80% of the previous one).</li>
     <li>Points: +${DEFS.game.points.city} per city, +${DEFS.game.points.tech} per tech, +${DEFS.game.points.kill} per kill, small amounts for exploring; temples generate points over time.</li>
@@ -541,11 +543,24 @@ function drawHex(x, y, s, fill, stroke) {
   if (stroke) { ctx.strokeStyle = stroke; ctx.lineWidth = 1.5; ctx.stroke(); }
 }
 
+// tiles sorted back-to-front for the blocky (3D-ish) renderer; cached until new tiles arrive
+let sortedTiles = [];
+let sortedTilesCount = -1;
+function getSortedTiles() {
+  if (tileMap.size !== sortedTilesCount) {
+    sortedTiles = [...tileMap.values()].sort((a, b) => a.r - b.r || a.q - b.q);
+    sortedTilesCount = tileMap.size;
+  }
+  return sortedTiles;
+}
+
 function render() {
   requestAnimationFrame(render);
   if (!state || !needsDraw) return;
   needsDraw = false;
+  const blocky = SETTINGS.graphics !== 'classic';
   ctx.clearRect(0, 0, canvas.width, canvas.height);
+  if (blocky) { ctx.fillStyle = '#14324e'; ctx.fillRect(0, 0, canvas.width, canvas.height); }
   ctx.save();
   ctx.translate(canvas.width / 2 - cam.x, canvas.height / 2 - cam.y);
 
@@ -563,32 +578,49 @@ function render() {
     }
   }
 
-  for (const t of tileMap.values()) {
+  const tiles = blocky ? getSortedTiles() : tileMap.values();
+  for (const t of tiles) {
     const { x, y } = hexToPx(t.q, t.r);
-    drawHex(x, y, cam.scale * 0.96, TERRAIN_COLORS[t.terrain], '#0d1420');
-    if (portTiles.has(`${t.q},${t.r}`)) {
-      drawHex(x, y, cam.scale * 0.8, 'rgba(120,200,255,0.18)', 'rgba(140,210,255,0.5)');
-      if (cam.scale > 22) {
-        ctx.font = `${cam.scale * 0.4}px sans-serif`; ctx.textAlign = 'center';
-        ctx.fillText('⚓', x, y + cam.scale * 0.15);
+    if (blocky) {
+      GFX.drawTile(ctx, x, y, cam.scale * 0.98, t);
+      if (portTiles.has(`${t.q},${t.r}`)) {
+        drawHex(x, y, cam.scale * 0.8, 'rgba(160,220,255,0.2)', 'rgba(190,230,255,0.55)');
+        if (cam.scale > 20) GFX.drawAnchor(ctx, x, y, cam.scale * 0.8);
       }
-    }
-    if (t.bonus && cam.scale > 20) {
-      ctx.font = `${cam.scale * 0.55}px sans-serif`; ctx.textAlign = 'center';
-      ctx.fillText(BONUS_ICONS[t.bonus], x, y + cam.scale * 0.2);
-    }
-    if (t.village) {
-      ctx.font = `${cam.scale * 0.7}px sans-serif`; ctx.textAlign = 'center';
-      ctx.fillText('🏕️', x, y + cam.scale * 0.25);
+      if (t.bonus && cam.scale > 18) GFX.drawBonus(ctx, x, y + cam.scale * 0.1, cam.scale, t.bonus, t.q, t.r);
+      if (t.village) GFX.drawVillage(ctx, x, y, cam.scale);
+    } else {
+      drawHex(x, y, cam.scale * 0.96, TERRAIN_COLORS[t.terrain], '#0d1420');
+      if (portTiles.has(`${t.q},${t.r}`)) {
+        drawHex(x, y, cam.scale * 0.8, 'rgba(120,200,255,0.18)', 'rgba(140,210,255,0.5)');
+        if (cam.scale > 22) {
+          ctx.font = `${cam.scale * 0.4}px sans-serif`; ctx.textAlign = 'center';
+          ctx.fillText('⚓', x, y + cam.scale * 0.15);
+        }
+      }
+      if (t.bonus && cam.scale > 20) {
+        ctx.font = `${cam.scale * 0.55}px sans-serif`; ctx.textAlign = 'center';
+        ctx.fillText(BONUS_ICONS[t.bonus], x, y + cam.scale * 0.2);
+      }
+      if (t.village) {
+        ctx.font = `${cam.scale * 0.7}px sans-serif`; ctx.textAlign = 'center';
+        ctx.fillText('🏕️', x, y + cam.scale * 0.25);
+      }
     }
   }
 
   for (const c of state.cities) {
     const { x, y } = hexToPx(c.q, c.r);
-    drawHex(x, y, cam.scale * 0.96, null, myColor(c.ownerId));
-    ctx.font = `${cam.scale * 0.8}px sans-serif`; ctx.textAlign = 'center';
-    ctx.fillText(c.capital ? '🏰' : '🏙️', x, y + cam.scale * 0.28);
+    if (blocky) {
+      drawHex(x, y, cam.scale * 0.98, null, myColor(c.ownerId));
+      GFX.drawCity(ctx, x, y, cam.scale, myColor(c.ownerId), c.capital, c.buildings.length);
+    } else {
+      drawHex(x, y, cam.scale * 0.96, null, myColor(c.ownerId));
+      ctx.font = `${cam.scale * 0.8}px sans-serif`; ctx.textAlign = 'center';
+      ctx.fillText(c.capital ? '🏰' : '🏙️', x, y + cam.scale * 0.28);
+    }
     ctx.font = `bold ${Math.max(10, cam.scale * 0.32)}px sans-serif`;
+    ctx.textAlign = 'center';
     ctx.fillStyle = myColor(c.ownerId);
     ctx.fillText(c.name, x, y - cam.scale * 0.75);
     drawBar(x, y + cam.scale * 0.55, c.hp / c.maxHp);
@@ -614,12 +646,17 @@ function render() {
 
   for (const u of state.units) {
     const { x, y } = hexToPx(u.q, u.r);
-    ctx.beginPath();
-    ctx.arc(x, y, cam.scale * 0.42, 0, Math.PI * 2);
-    ctx.fillStyle = myColor(u.ownerId); ctx.fill();
-    ctx.strokeStyle = '#0d1420'; ctx.stroke();
-    ctx.font = `${cam.scale * 0.5}px sans-serif`; ctx.textAlign = 'center';
-    ctx.fillText(u.boat ? '🛶' : UNIT_ICONS[u.type], x, y + cam.scale * 0.17);
+    if (blocky) {
+      if (u.boat) GFX.drawBoat(ctx, x, y, cam.scale, myColor(u.ownerId));
+      else GFX.drawUnit(ctx, x, y, cam.scale, u.type, myColor(u.ownerId));
+    } else {
+      ctx.beginPath();
+      ctx.arc(x, y, cam.scale * 0.42, 0, Math.PI * 2);
+      ctx.fillStyle = myColor(u.ownerId); ctx.fill();
+      ctx.strokeStyle = '#0d1420'; ctx.stroke();
+      ctx.font = `${cam.scale * 0.5}px sans-serif`; ctx.textAlign = 'center';
+      ctx.fillText(u.boat ? '🛶' : UNIT_ICONS[u.type], x, y + cam.scale * 0.17);
+    }
     drawBar(x, y + cam.scale * 0.55, u.hp / u.maxHp);
     if (selected && selected.kind === 'units' && selected.ids.includes(u.id)) {
       ctx.beginPath(); ctx.arc(x, y, cam.scale * 0.52, 0, Math.PI * 2);
