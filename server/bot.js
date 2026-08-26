@@ -3,7 +3,7 @@ const { UNITS, BUILDINGS, TECHS, TERRAIN } = require('./data');
 const { neighbors, hexDist, key } = require('./map');
 
 const LEVELS = {
-  passive: { actMs: 4500, aggro: 0, smart: 0.3 }, // tutorial opponent: expands but never attacks
+  passive: { actMs: 4500, aggro: 0, smart: 0.3, stay: true }, // tutorial opponent: grows economy, units never leave home
   easy:   { actMs: 3500, aggro: 0.25, smart: 0.4 },
   medium: { actMs: 2200, aggro: 0.5,  smart: 0.7 },
   hard:   { actMs: 1200, aggro: 0.75, smart: 1.0 },
@@ -86,6 +86,7 @@ class Bot {
   }
 
   commandUnits(p) {
+    if (this.cfg.stay) return; // tutorial bot: units guard their city and never roam
     const g = this.game;
     const myUnits = [...g.units.values()].filter(u => u.ownerId === p.id);
     const enemies = [...g.players.values()].filter(o => o.id !== p.id && o.alive && !p.allies.has(o.id));
