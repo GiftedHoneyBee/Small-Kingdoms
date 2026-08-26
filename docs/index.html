@@ -21,6 +21,7 @@
           <button id="create-btn" class="primary">Create game</button>
           <button id="settings-btn">⚙️ Settings</button>
           <button id="wiki-btn">📖 Wiki</button>
+          <button id="tutorial-btn">🎓 Tutorial</button>
         </div>
         <h3>Open games</h3>
         <div id="room-list"><em>No open games — create one!</em></div>
@@ -37,6 +38,22 @@
           <select id="game-speed" title="Game speed">
             <option value="bullet" selected>Bullet (fast)</option>
             <option value="slow">Slow (75% less income, 5× slower units)</option>
+          </select>
+          <select id="map-size" title="Map size">
+            <option value="tiny">Tiny map (25%)</option>
+            <option value="small">Small map (50%)</option>
+            <option value="normal" selected>Normal map</option>
+            <option value="big">Big map (200%)</option>
+            <option value="huge">Huge map (400%)</option>
+            <option value="gigantic">Gigantic map (1000%)</option>
+          </select>
+          <select id="map-type" title="Map type / terrain generation">
+            <option value="continents" selected>Continents</option>
+            <option value="pangea">Pangea</option>
+            <option value="islands">Islands</option>
+            <option value="lakes">Lakes</option>
+            <option value="dryland">Dryland</option>
+            <option value="mountainpass">Mountain pass</option>
           </select>
           <select id="bot-level">
             <option value="easy">Easy bot</option>
@@ -108,6 +125,20 @@
       <label class="setting-row"><input type="checkbox" id="set-arrows"> Show movement arrows (planned unit paths)</label>
       <label class="setting-row"><input type="checkbox" id="set-autoselect"> Auto-select newly trained units</label>
       <button id="settings-close">Close</button>
+    </div>
+  </div>
+
+  <!-- Tutorial modal -->
+  <div id="tutorial-modal" class="modal hidden">
+    <div class="panel wiki-panel">
+      <h3 id="tutorial-title">🎓 Tutorial</h3>
+      <div id="tutorial-content"></div>
+      <div class="row">
+        <button id="tutorial-prev">◀ Back</button>
+        <span id="tutorial-step" class="hint"></span>
+        <button id="tutorial-next" class="primary">Next ▶</button>
+      </div>
+      <button id="tutorial-close">Close</button>
     </div>
   </div>
 

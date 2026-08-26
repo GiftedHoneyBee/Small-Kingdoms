@@ -4,7 +4,7 @@ const http = require('http');
 const { WebSocketServer } = require('ws');
 const { Game } = require('./game');
 const { Bot } = require('./bot');
-const { CIVS, UNITS, BUILDINGS, TECHS, GAME } = require('./data');
+const { CIVS, UNITS, BUILDINGS, TECHS, GAME, BOAT } = require('./data');
 
 const app = express();
 app.use(express.static(path.join(__dirname, '..', 'public'), {
@@ -80,7 +80,7 @@ function startGame(room, opts = {}) {
 wss.on('connection', (ws) => {
   ws.playerId = `p${Math.random().toString(36).slice(2, 10)}`;
   ws.roomId = null;
-  send(ws, { type: 'defs', civs: CIVS, units: UNITS, buildings: BUILDINGS, techs: TECHS, game: GAME, you: ws.playerId });
+  send(ws, { type: 'defs', civs: CIVS, units: UNITS, buildings: BUILDINGS, techs: TECHS, game: GAME, boat: BOAT, you: ws.playerId });
   send(ws, roomList());
 
   ws.on('message', (raw) => {
@@ -139,7 +139,7 @@ wss.on('connection', (ws) => {
       }
 
       case 'start': {
-        if (room && room.hostId === ws.playerId) startGame(room, { winMode: m.winMode, speed: m.speed });
+        if (room && room.hostId === ws.playerId) startGame(room, { winMode: m.winMode, speed: m.speed, mapSize: m.mapSize, mapType: m.mapType });
         break;
       }
 
@@ -148,7 +148,7 @@ wss.on('connection', (ws) => {
         const pid = ws.playerId;
         if (m.action === 'move') g.actMove(pid, m.unitId, m.q, m.r);
         else if (m.action === 'stop') g.actStop(pid, m.unitId);
-        else if (m.action === 'autoattack') g.actAutoAttack(pid, m.unitId, m.on);
+        else if (m.action === 'autoattack') g.actAutoAttack(pid, m.unitId, m.range ?? (m.on ? 3 : 0));
         else if (m.action === 'autotrain') g.actAutoTrain(pid, m.cityId, m.unit);
         else if (m.action === 'train') g.actTrain(pid, m.cityId, m.unit);
         else if (m.action === 'build') g.actBuild(pid, m.cityId, m.building);

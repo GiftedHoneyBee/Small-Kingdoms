@@ -1,6 +1,6 @@
 // Real-time game engine. All mutation happens here; server/index.js routes
 // socket messages to actions, bots call the same actions.
-const { CIVS, TERRAIN, UNITS, BUILDINGS, TECHS, GAME } = require('./data');
+const { CIVS, TERRAIN, UNITS, BUILDINGS, TECHS, GAME, BOAT } = require('./data');
 const { generateMap, neighbors, hexDist, key } = require('./map');
 
 let nextId = 1;
@@ -16,7 +16,9 @@ class Game {
     this.speed = opts.speed === 'slow' ? 'slow' : 'bullet';
     this.incomeMult = this.speed === 'slow' ? 0.25 : 1;
     this.moveMult = this.speed === 'slow' ? 5 : 1;
-    const { tiles, starts } = generateMap(seed);
+    const { tiles, starts } = generateMap(seed, { mapSize: opts.mapSize, mapType: opts.mapType });
+    this.mapSize = opts.mapSize || 'normal';
+    this.mapType = opts.mapType || 'continents';
     this.tiles = tiles;
     this.units = new Map();
     this.cities = new Map();
@@ -95,7 +97,8 @@ class Game {
     const def = UNITS[type];
     const u = {
       id: uid('u'), ownerId, type, q: spot[0], r: spot[1],
-      hp: def.hp, maxHp: def.hp, nextMoveAt: 0, dest: null, autoAttack: false,
+      hp: def.hp, maxHp: def.hp, nextMoveAt: 0, dest: null, autoAttack: 0,
+      boat: false, path: null, pathGoal: null,
     };
     this.units.set(u.id, u);
     const p = this.player(ownerId);
@@ -140,10 +143,18 @@ class Game {
     u.dest = null;
   }
 
-  actAutoAttack(pid, unitId, on) {
+  actAutoAttack(pid, unitId, range) {
     const u = this.units.get(unitId);
     if (!u || u.ownerId !== pid) return;
-    u.autoAttack = !!on;
+    // detection radius cycles off(0) -> 3 -> 6 -> 9
+    u.autoAttack = [0, 3, 6, 9].includes(range) ? range : (range ? 3 : 0);
+  }
+
+  // effective combat/movement stats (boat overrides while embarked)
+  unitStats(u) {
+    const d = UNITS[u.type];
+    if (!u.boat) return d;
+    return { name: `${d.name} (boat)`, atk: BOAT.atk, def: BOAT.def, range: BOAT.range, moveMs: BOAT.moveMs, vision: d.vision };
   }
 
   actAutoTrain(pid, cityId, type) {
@@ -181,19 +192,20 @@ class Game {
   autoAttackTick() {
     for (const u of this.units.values()) {
       if (!u.autoAttack || u.dest) continue;
+      const radius = u.autoAttack;
       const p = this.player(u.ownerId);
       let best = null; let bestD = Infinity;
       for (const e of this.units.values()) {
         if (this.areAllies(u.ownerId, e.ownerId)) continue;
         if (p && !p.explored.has(key(e.q, e.r))) continue;
         const d = hexDist(u, e);
-        if (d <= 3 && d < bestD) { bestD = d; best = e; }
+        if (d <= radius && d < bestD) { bestD = d; best = e; }
       }
       if (!best) {
         for (const c of this.cities.values()) {
           if (this.areAllies(u.ownerId, c.ownerId)) continue;
           const d = hexDist(u, c);
-          if (d <= 3 && d < bestD) { bestD = d; best = c; }
+          if (d <= radius && d < bestD) { bestD = d; best = c; }
         }
       }
       if (best) u.dest = { q: best.q, r: best.r };
@@ -209,6 +221,7 @@ class Game {
     const civ = CIVS[p.civ];
     let mult = civ.buildDiscount || 1;
     if (building === 'walls' && civ.freeWalls) mult = 0;
+    if (building === 'port' && !this.waterNear(c.q, c.r, def.portRange || 3)) return;
     if (!this.canAfford(p, def.cost, mult)) return;
     this.pay(p, def.cost, mult);
     c.buildings.push(building);
@@ -231,7 +244,7 @@ class Game {
     const p = this.player(pid); const u = this.units.get(unitId);
     if (!p || !u || u.ownerId !== pid || u.type !== 'settler' || this.over) return;
     const t = this.tile(u.q, u.r);
-    if (!t || t.cityId) return;
+    if (!t || t.cityId || !TERRAIN[t.terrain].move) return;
     for (const c of this.cities.values()) if (hexDist(c, u) < 3) return;
     this.units.delete(u.id);
     this.foundCityAt(p, u.q, u.r);
@@ -320,54 +333,175 @@ class Game {
     }
   }
 
+  // is there a water tile within `radius` of (q,r)?
+  waterNear(q, r, radius) {
+    for (let dq = -radius; dq <= radius; dq++) {
+      for (let dr = Math.max(-radius, -dq - radius); dr <= Math.min(radius, -dq + radius); dr++) {
+        const t = this.tile(q + dq, r + dr);
+        if (t && t.terrain === 'water') return true;
+      }
+    }
+    return false;
+  }
+
+  // water tiles reachable for embarking by `pid`: within port range of an
+  // allied city that has a port
+  portZones(pid) {
+    const zones = new Set();
+    const R = BUILDINGS.port.portRange || 3;
+    for (const c of this.cities.values()) {
+      if (!this.areAllies(pid, c.ownerId) || !c.buildings.includes('port')) continue;
+      for (let dq = -R; dq <= R; dq++) {
+        for (let dr = Math.max(-R, -dq - R); dr <= Math.min(R, -dq + R); dr++) {
+          const t = this.tile(c.q + dq, c.r + dr);
+          if (t && t.terrain === 'water') zones.add(key(t.q, t.r));
+        }
+      }
+    }
+    return zones;
+  }
+
+  canEnter(u, t, zones) {
+    if (!t) return false;
+    if (t.terrain === 'mountain') return !!UNITS[u.type].canMountain && !u.boat;
+    if (t.terrain === 'water') return u.boat || zones.has(key(t.q, t.r));
+    return true;
+  }
+
+  // A* toward dest. Allied-occupied tiles cost extra so big groups spread onto
+  // longer roads instead of queueing on a narrow one. If the destination is
+  // unreachable, returns the path to the closest reachable tile.
+  findPath(u, dest, occMap, zones) {
+    const startK = key(u.q, u.r);
+    const goalK = key(dest.q, dest.r);
+    const gScore = new Map([[startK, 0]]);
+    const came = new Map();
+    const open = [[hexDist(u, dest), 0, u.q, u.r]]; // [f, g, q, r] binary min-heap
+    const push = (n) => {
+      open.push(n);
+      let i = open.length - 1;
+      while (i > 0) { const par = (i - 1) >> 1; if (open[par][0] <= open[i][0]) break; [open[par], open[i]] = [open[i], open[par]]; i = par; }
+    };
+    const pop = () => {
+      const top = open[0]; const last = open.pop();
+      if (open.length) {
+        open[0] = last; let i = 0;
+        for (;;) {
+          let m = i; const l = 2 * i + 1, rr = 2 * i + 2;
+          if (l < open.length && open[l][0] < open[m][0]) m = l;
+          if (rr < open.length && open[rr][0] < open[m][0]) m = rr;
+          if (m === i) break; [open[i], open[m]] = [open[m], open[i]]; i = m;
+        }
+      }
+      return top;
+    };
+    let bestK = startK; let bestH = hexDist(u, dest);
+    let expanded = 0;
+    const closed = new Set();
+    while (open.length && expanded < 4000) {
+      const [, g, q, r] = pop();
+      const k = key(q, r);
+      if (closed.has(k)) continue;
+      closed.add(k);
+      expanded++;
+      if (k === goalK) { bestK = k; break; }
+      const h = hexDist({ q, r }, dest);
+      if (h < bestH) { bestH = h; bestK = k; }
+      for (const [nq, nr] of neighbors(q, r)) {
+        const nk = key(nq, nr);
+        if (closed.has(nk)) continue;
+        const t = this.tile(nq, nr);
+        if (!this.canEnter(u, t, zones)) continue;
+        const occ = occMap.get(nk);
+        let cost = 1;
+        if (occ && this.areAllies(u.ownerId, occ.ownerId)) cost += 4; // congestion penalty
+        const ng = g + cost;
+        if (ng < (gScore.get(nk) ?? Infinity)) {
+          gScore.set(nk, ng);
+          came.set(nk, k);
+          push([ng + hexDist({ q: nq, r: nr }, dest), ng, nq, nr]);
+        }
+      }
+    }
+    if (bestK === startK) return null;
+    const path = [];
+    let cur = bestK;
+    while (cur !== startK) {
+      const [q, r] = cur.split(',').map(Number);
+      path.unshift({ q, r });
+      cur = came.get(cur);
+    }
+    return path;
+  }
+
   moveUnits() {
     const now = Date.now();
     const occMap = this.buildOccupancy();
+    const zoneCache = new Map();
+    const zonesFor = (pid) => {
+      if (!zoneCache.has(pid)) zoneCache.set(pid, this.portZones(pid));
+      return zoneCache.get(pid);
+    };
     for (const u of [...this.units.values()]) {
       if (!u.dest || now < u.nextMoveAt) continue;
-      if (u.q === u.dest.q && u.r === u.dest.r) { u.dest = null; continue; }
+      if (u.q === u.dest.q && u.r === u.dest.r) { u.dest = null; u.path = null; continue; }
       const p = this.player(u.ownerId);
+      const stats = this.unitStats(u);
       // ranged units fire from distance once their destination is within range
-      const range = UNITS[u.type].range || 1;
+      const range = stats.range || 1;
       if (range > 1 && hexDist(u, u.dest) <= range) {
         const target = this.rangedTarget(u, range);
         if (target) {
           const civ2 = CIVS[p.civ];
-          u.nextMoveAt = now + UNITS[u.type].moveMs * (civ2.speedMult || 1) * this.moveMult;
+          u.nextMoveAt = now + stats.moveMs * (civ2.speedMult || 1) * this.moveMult;
           this.rangedAttack(u, target);
           continue;
         }
       }
-      // greedy step toward dest
-      let best = null; let bestD = Infinity;
-      for (const [nq, nr] of neighbors(u.q, u.r)) {
-        const t = this.tile(nq, nr);
-        if (!t || !TERRAIN[t.terrain].move) continue;
-        const occ = occMap.get(key(nq, nr));
-        if (occ && this.areAllies(u.ownerId, occ.ownerId)) continue;
-        const d = hexDist({ q: nq, r: nr }, u.dest);
-        if (d < bestD) { bestD = d; best = { q: nq, r: nr, occ }; }
+      const zones = zonesFor(u.ownerId);
+      // (re)plan when there is no path, the goal changed, or the next step is
+      // blocked by an allied unit (congestion-aware replan picks another road)
+      let step = u.path && u.path.length ? u.path[0] : null;
+      const goalChanged = !u.pathGoal || u.pathGoal.q !== u.dest.q || u.pathGoal.r !== u.dest.r;
+      const stepBlocked = step && (() => {
+        const occ = occMap.get(key(step.q, step.r));
+        return (occ && this.areAllies(u.ownerId, occ.ownerId)) || !this.canEnter(u, this.tile(step.q, step.r), zones);
+      })();
+      if (!step || goalChanged || stepBlocked) {
+        u.path = this.findPath(u, u.dest, occMap, zones);
+        u.pathGoal = { q: u.dest.q, r: u.dest.r };
+        step = u.path && u.path.length ? u.path[0] : null;
       }
-      if (!best || bestD >= hexDist(u, u.dest) + 1) {
-        // blocked: hold position but keep the destination, retry shortly
-        u.nextMoveAt = now + 600;
-        if (hexDist(u, u.dest) <= 1) u.dest = null; // as close as possible
+      if (!step) {
+        // no route at all right now: hold position, keep dest, retry shortly
+        u.nextMoveAt = now + 800;
+        if (hexDist(u, u.dest) <= 1) { u.dest = null; u.path = null; } // as close as possible
+        continue;
+      }
+      const occ = occMap.get(key(step.q, step.r));
+      if (occ && this.areAllies(u.ownerId, occ.ownerId)) {
+        // even the replanned road is blocked by a friend right now: wait a bit
+        u.nextMoveAt = now + 400;
         continue;
       }
       const civ = CIVS[p.civ];
-      u.nextMoveAt = now + UNITS[u.type].moveMs * (civ.speedMult || 1) * this.moveMult;
+      u.nextMoveAt = now + stats.moveMs * (civ.speedMult || 1) * this.moveMult;
 
-      if (best.occ) { this.fight(u, best.occ); if (!this.units.has(best.occ.id)) occMap.delete(key(best.occ.q, best.occ.r)); continue; }
-      const city = this.cityAt(best.q, best.r);
+      if (occ) { this.fight(u, occ); if (!this.units.has(occ.id)) occMap.delete(key(occ.q, occ.r)); continue; }
+      const city = this.cityAt(step.q, step.r);
       if (city && !this.areAllies(u.ownerId, city.ownerId)) {
         this.attackCity(u, city);
         continue;
       }
       occMap.delete(key(u.q, u.r));
-      u.q = best.q; u.r = best.r;
+      u.q = step.q; u.r = step.r;
+      u.path.shift();
       occMap.set(key(u.q, u.r), u);
-      this.reveal(p, u.q, u.r, UNITS[u.type].vision || 1);
       const t = this.tile(u.q, u.r);
+      // embark / disembark
+      if (t.terrain === 'water' && !u.boat) u.boat = true;
+      else if (t.terrain !== 'water' && u.boat) u.boat = false;
+      this.reveal(p, u.q, u.r, UNITS[u.type].vision || 1);
       if (t.village) this.captureVillage(p, u, t);
     }
   }
@@ -391,11 +525,11 @@ class Game {
 
   rangedAttack(u, target) {
     const ap = this.player(u.ownerId);
-    const aDef = UNITS[u.type];
+    const aDef = this.unitStats(u);
     if (target.kind === 'unit') {
       const def = target.t;
       const dp = this.player(def.ownerId);
-      const dDef = UNITS[def.type];
+      const dDef = this.unitStats(def);
       const defCity = this.cityAt(def.q, def.r);
       const defense = dDef.def * (CIVS[dp.civ].defMult || 1) * (defCity ? 1.5 : 1);
       const dmg = Math.max(2, Math.round(aDef.atk - defense / 2 + Math.random() * 4));
@@ -425,8 +559,8 @@ class Game {
 
   fight(att, def) {
     const ap = this.player(att.ownerId); const dp = this.player(def.ownerId);
-    const aDef = UNITS[att.type]; const dDef = UNITS[def.type];
-    let atk = aDef.atk + (att.type === 'warrior' ? (CIVS[ap.civ].warriorAtkBonus || 0) : 0);
+    const aDef = this.unitStats(att); const dDef = this.unitStats(def);
+    let atk = aDef.atk + (att.type === 'warrior' && !att.boat ? (CIVS[ap.civ].warriorAtkBonus || 0) : 0);
     const defCity = this.cityAt(def.q, def.r);
     let defense = dDef.def * (CIVS[dp.civ].defMult || 1) * (defCity ? 1.5 : 1);
     const dmg = Math.max(2, Math.round(atk - defense / 2 + Math.random() * 4));
@@ -448,9 +582,9 @@ class Game {
   attackCity(u, city) {
     if (Date.now() - this.startTime < GAME.peaceMs) return; // early peace period
     const ap = this.player(u.ownerId); const cp = this.player(city.ownerId);
-    const aDef = UNITS[u.type];
+    const aDef = this.unitStats(u);
     const walls = city.buildings.includes('walls') ? BUILDINGS.walls.defBonus : 0;
-    const atk = aDef.atk * (u.type === 'catapult' ? 1.5 : 1);
+    const atk = aDef.atk * (u.type === 'catapult' && !u.boat ? 1.5 : 1);
     const dmg = Math.max(1, Math.round(atk - (3 + walls) / 2 * (CIVS[cp.civ].defMult || 1) + Math.random() * 3));
     city.hp -= dmg;
     u.hp -= Math.max(1, Math.round(3 + walls / 2 - aDef.def / 3));
@@ -511,7 +645,7 @@ class Game {
     }
     const units = [...this.units.values()]
       .filter(u => p.explored.has(key(u.q, u.r)))
-      .map(u => ({ id: u.id, ownerId: u.ownerId, type: u.type, q: u.q, r: u.r, hp: Math.round(u.hp), maxHp: u.maxHp, autoAttack: u.autoAttack, dest: u.ownerId === pid ? u.dest : null }));
+      .map(u => ({ id: u.id, ownerId: u.ownerId, type: u.type, q: u.q, r: u.r, hp: Math.round(u.hp), maxHp: u.maxHp, autoAttack: u.autoAttack, boat: u.boat, dest: u.ownerId === pid ? u.dest : null }));
     const cities = [...this.cities.values()]
       .filter(c => p.explored.has(key(c.q, c.r)))
       .map(c => ({ id: c.id, ownerId: c.ownerId, q: c.q, r: c.r, name: c.name, hp: Math.round(c.hp), maxHp: c.maxHp, buildings: c.buildings, capital: c.capital, autoTrain: c.autoTrain }));
@@ -532,6 +666,7 @@ class Game {
       events: this.events.filter(e => !e.to || e.to.includes(pid)).map(e => e.text),
       pointsToWin: this.winMode === 'elimination' ? null : GAME.pointsToWin,
       winMode: this.winMode, speed: this.speed,
+      mapSize: this.mapSize, mapType: this.mapType,
     };
   }
 }

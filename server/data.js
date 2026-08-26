@@ -47,7 +47,11 @@ const UNITS = {
   knight:   { name: 'Knight',   cost: { food: 40, gold: 35 }, hp: 24, atk: 11, def: 5, moveMs: 900, tech: 'chivalry' },
   catapult: { name: 'Catapult', cost: { wood: 55, stone: 40 }, hp: 14, atk: 16, def: 1, moveMs: 3200, tech: 'engineering', range: 3 },
   settler:  { name: 'Settler',  cost: { food: 60, gold: 30 }, hp: 10, atk: 0, def: 1, moveMs: 1800, tech: 'expansion' },
+  giant:    { name: 'Mountain Giant', cost: { food: 80, stone: 60, gold: 50 }, hp: 60, atk: 12, def: 8, moveMs: 2800, tech: 'mountainlore', range: 1, canMountain: true },
 };
+
+// stats a unit uses while embarked on a boat (hp is kept from the unit)
+const BOAT = { name: 'Boat', atk: 7, def: 3, range: 2, moveMs: 1000 };
 
 const BUILDINGS = {
   farm:    { name: 'Farm',    cost: { wood: 20 },            income: { food: 3 },    tech: 'farming', points: 5 },
@@ -57,6 +61,7 @@ const BUILDINGS = {
   library: { name: 'Library', cost: { wood: 30 },            income: { science: 3 }, tech: 'writing', points: 10 },
   walls:   { name: 'Walls',   cost: { stone: 30 },           defBonus: 6,            tech: 'masonry', points: 5 },
   temple:  { name: 'Temple',  cost: { gold: 40, stone: 20 }, pointsPerSec: 0.4,      tech: 'philosophy', points: 20 },
+  port:    { name: 'Port',    cost: { wood: 30, gold: 25 },  portRange: 3,           tech: 'seafaring', points: 10 },
 };
 
 const TECHS = {
@@ -70,6 +75,8 @@ const TECHS = {
   philosophy:  { name: 'Philosophy',  cost: 24, req: 'writing',   unlocks: 'Temple (points over time)' },
   engineering: { name: 'Engineering', cost: 26, req: 'masonry',   unlocks: 'Catapult unit' },
   banking:     { name: 'Banking',     cost: 28, req: 'trade',     unlocks: '+50% gold income' },
+  seafaring:   { name: 'Seafaring',   cost: 20, req: 'writing',   unlocks: 'Port building (boats on water)' },
+  mountainlore:{ name: 'Mountain Lore', cost: 24, req: 'masonry', unlocks: 'Mountain Giant unit' },
 };
 
 const GAME = {
@@ -82,4 +89,4 @@ const GAME = {
   points: { tech: 12, city: 40, kill: 8, tileExplored: 0.05 },
 };
 
-module.exports = { CIVS, TERRAIN, BONUSES, UNITS, BUILDINGS, TECHS, GAME };
+module.exports = { CIVS, TERRAIN, BONUSES, UNITS, BUILDINGS, TECHS, GAME, BOAT };

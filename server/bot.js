@@ -38,7 +38,7 @@ class Bot {
 
   research(p) {
     const g = this.game;
-    const order = ['farming', 'writing', 'masonry', 'archery', 'trade', 'expansion', 'chivalry', 'banking', 'philosophy', 'engineering'];
+    const order = ['farming', 'writing', 'masonry', 'archery', 'trade', 'expansion', 'chivalry', 'banking', 'philosophy', 'engineering', 'seafaring', 'mountainlore'];
     for (const t of order) {
       if (!p.techs.has(t) && (!TECHS[t].req || p.techs.has(TECHS[t].req)) && p.res.science >= TECHS[t].cost) {
         g.actResearch(p.id, t);
@@ -53,7 +53,7 @@ class Bot {
 
   build(p) {
     const g = this.game;
-    const order = ['farm', 'sawmill', 'library', 'mine', 'market', 'walls', 'temple'];
+    const order = ['farm', 'sawmill', 'library', 'mine', 'market', 'walls', 'temple', 'port'];
     for (const c of this.myCities(p)) {
       for (const b of order) {
         if (c.buildings.includes(b)) continue;
@@ -74,7 +74,7 @@ class Bot {
       !myUnits.some(u => u.type === 'settler');
     if (wantSettler && g.canAfford(p, UNITS.settler.cost)) { g.actTrain(p.id, c.id, 'settler'); return; }
     if (myUnits.length < 3 + cities.length * 2) {
-      const prefs = ['knight', 'archer', 'defender', 'warrior', 'scout'];
+      const prefs = ['knight', 'archer', 'giant', 'defender', 'warrior', 'scout'];
       for (const t of prefs) {
         const def = UNITS[t];
         if (def.tech && !p.techs.has(def.tech)) continue;

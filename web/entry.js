@@ -3,7 +3,7 @@
  * LocalSocket that runs the whole "server" inside the browser. */
 const { Game } = require('../server/game');
 const { Bot } = require('../server/bot');
-const { CIVS, UNITS, BUILDINGS, TECHS, GAME } = require('../server/data');
+const { CIVS, UNITS, BUILDINGS, TECHS, GAME, BOAT } = require('../server/data');
 
 const BOT_NAMES = ['Ada', 'Brutus', 'Cleo', 'Darius', 'Elena', 'Falco'];
 const sanitize = s => String(s || '').replace(/[<>]/g, '').slice(0, 20);
@@ -17,7 +17,7 @@ class LocalSocket {
     this.room = null;
     this.nextBot = 1;
     setTimeout(() => {
-      this._emit({ type: 'defs', civs: CIVS, units: UNITS, buildings: BUILDINGS, techs: TECHS, game: GAME, you: this.playerId });
+      this._emit({ type: 'defs', civs: CIVS, units: UNITS, buildings: BUILDINGS, techs: TECHS, game: GAME, boat: BOAT, you: this.playerId });
       this._emit({ type: 'rooms', rooms: [] });
     }, 0);
   }
@@ -72,13 +72,13 @@ class LocalSocket {
         if (i >= 0) { r.players.splice(i, 1); this._lobby(); }
         break;
       }
-      case 'start': this._start({ winMode: m.winMode, speed: m.speed }); break;
+      case 'start': this._start({ winMode: m.winMode, speed: m.speed, mapSize: m.mapSize, mapType: m.mapType }); break;
       case 'action': {
         if (!g) break;
         const pid = this.playerId;
         if (m.action === 'move') g.actMove(pid, m.unitId, m.q, m.r);
         else if (m.action === 'stop') g.actStop(pid, m.unitId);
-        else if (m.action === 'autoattack') g.actAutoAttack(pid, m.unitId, m.on);
+        else if (m.action === 'autoattack') g.actAutoAttack(pid, m.unitId, m.range ?? (m.on ? 3 : 0));
         else if (m.action === 'autotrain') g.actAutoTrain(pid, m.cityId, m.unit);
         else if (m.action === 'train') g.actTrain(pid, m.cityId, m.unit);
         else if (m.action === 'build') g.actBuild(pid, m.cityId, m.building);

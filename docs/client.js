@@ -29,7 +29,7 @@ function assignColors(list) {
   colorById = {};
   list.forEach((p, i) => { colorById[p.id] = PLAYER_COLORS[i % PLAYER_COLORS.length]; });
 }
-const UNIT_ICONS = { warrior: '⚔️', scout: '👁️', defender: '🛡️', archer: '🏹', knight: '🐎', catapult: '💣', settler: '🚩' };
+const UNIT_ICONS = { warrior: '⚔️', scout: '👁️', defender: '🛡️', archer: '🏹', knight: '🐎', catapult: '💣', settler: '🚩', giant: '🧌' };
 
 ws.onmessage = (e) => {
   const m = JSON.parse(e.data);
@@ -74,7 +74,7 @@ function renderRooms(list) {
 $('create-btn').onclick = () => ws.send(JSON.stringify({ type: 'createRoom', name: $('name-input').value, civ: selectedCiv }));
 $('add-bot-btn').onclick = () => ws.send(JSON.stringify({ type: 'addBot', level: $('bot-level').value }));
 $('remove-bot-btn').onclick = () => ws.send(JSON.stringify({ type: 'removeBot' }));
-$('start-btn').onclick = () => ws.send(JSON.stringify({ type: 'start', winMode: $('win-mode').value, speed: $('game-speed').value }));
+$('start-btn').onclick = () => ws.send(JSON.stringify({ type: 'start', winMode: $('win-mode').value, speed: $('game-speed').value, mapSize: $('map-size').value, mapType: $('map-type').value }));
 setInterval(() => { if (!state && $('lobby-room').classList.contains('hidden')) ws.readyState === 1 && ws.send(JSON.stringify({ type: 'listRooms' })); }, 2500);
 
 let isHost = false;
@@ -206,17 +206,20 @@ function renderSelectPanel(force = false) {
     if (us.length === 1) {
       const u = us[0];
       const def = DEFS.units[u.type];
-      el.innerHTML = `<h4>${UNIT_ICONS[u.type]} ${def.name}</h4>HP ${u.hp}/${u.maxHp} · ATK ${def.atk} · DEF ${def.def}<br><small>Click a tile to move (click destination again to cancel). Click more of your units to group. Double-click a selected unit to select all of that type. Esc deselects.</small>`;
+      const boatTag = u.boat ? ` 🛶 in boat (ATK ${DEFS.boat.atk} · range ${DEFS.boat.range})` : '';
+      el.innerHTML = `<h4>${UNIT_ICONS[u.type]} ${def.name}${boatTag}</h4>HP ${u.hp}/${u.maxHp} · ATK ${def.atk} · DEF ${def.def}<br><small>Click a tile to move (click destination again to cancel). Click more of your units to group. Double-click a selected unit to select all of that type. Esc deselects.</small>`;
     } else {
       el.innerHTML = `<h4>${us.length} units selected</h4>` +
-        us.map(u => `${UNIT_ICONS[u.type]} ${DEFS.units[u.type].name} (${u.hp}/${u.maxHp})`).join('<br>') +
+        us.map(u => `${UNIT_ICONS[u.type]} ${DEFS.units[u.type].name}${u.boat ? ' 🛶' : ''} (${u.hp}/${u.maxHp})`).join('<br>') +
         `<br><small>Click a tile to move them all (click it again to cancel). Esc deselects.</small>`;
     }
-    const allAuto = us.every(u => u.autoAttack);
+    // auto-attack radius cycles off -> 3 -> 6 -> 9 -> off
+    const curAa = us[0].autoAttack || 0;
+    const nextAa = { 0: 3, 3: 6, 6: 9, 9: 0 }[curAa] ?? 0;
     const aa = document.createElement('button');
     aa.className = 'act-btn';
-    aa.textContent = allAuto ? '⚔️ Auto-attack: ON (≤3 tiles)' : '⚔️ Auto-attack: OFF';
-    aa.onclick = () => { for (const u of us) sendAction({ action: 'autoattack', unitId: u.id, on: !allAuto }); };
+    aa.textContent = curAa ? `⚔️ Auto-attack: ≤${curAa} tiles (click: ${nextAa ? '≤' + nextAa + ' tiles' : 'off'})` : '⚔️ Auto-attack: OFF (click: ≤3 tiles)';
+    aa.onclick = () => { for (const u of us) sendAction({ action: 'autoattack', unitId: u.id, range: nextAa }); };
     el.appendChild(aa);
     addDeselectBtn(el);
     for (const u of us) {
@@ -342,14 +345,62 @@ function renderWiki() {
   for (const t of Object.values(DEFS.techs)) {
     h += `<tr><td><b>${t.name}</b></td><td>🔬${t.cost}</td><td>${t.unlocks}</td><td>${t.req ? DEFS.techs[t.req].name : '—'}</td></tr>`;
   }
-  h += `</table><h4>Rules</h4><ul>
+  h += `</table><h4>Boats & ports</h4><ul>
+    <li>Research <b>Seafaring</b>, then build a <b>Port</b> in a city near water. All water tiles within ${DEFS.buildings.port.portRange} tiles of that city become port waters (shown with ⚓ shading on the map).</li>
+    <li>Move a unit onto port waters and it boards a boat 🛶: speed 1 tile/${(DEFS.boat.moveMs / 1000).toFixed(0)}s, ATK ${DEFS.boat.atk}, DEF ${DEFS.boat.def}, range ${DEFS.boat.range}, HP is kept from the unit.</li>
+    <li>Boats sail any water once launched. Moving a boat onto land makes the unit disembark.</li>
+    <li>The <b>Mountain Giant</b> 🧌 (Mountain Lore tech) is the only unit that can walk over mountains.</li>
+  </ul><h4>Map generation</h4><ul>
+    <li><b>Sizes:</b> Tiny (25%), Small (50%), Normal, Big (200%), Huge (400%), Gigantic (1000%).</li>
+    <li><b>Types:</b> Pangea (one connected landmass, ~50% water) · Continents (large landmasses split by ocean) · Islands (lots of water, small isles) · Lakes (mostly land with big lakes) · Dryland (almost no water) · Mountain pass (~1/3 mountains dividing the land).</li>
+  </ul><h4>Controls & shortcuts</h4><ul>
+    <li><b>Click</b> a unit to select it; click more of your units to group them.</li>
+    <li><b>Click a tile</b> to move the whole selected group there — units pathfind around mountains and water. Click the destination again to cancel.</li>
+    <li><b>Double-click a unit</b> to select all your units of that type.</li>
+    <li><b>Double-click a city</b> to deselect all units and select the city.</li>
+    <li><b>Esc</b> or the Deselect button clears the selection.</li>
+    <li><b>Drag</b> to pan the map, <b>mouse wheel</b> to zoom.</li>
+    <li><b>Auto-attack</b> button cycles OFF → ≤3 → ≤6 → ≤9 tiles → OFF (units chase enemies they detect in that radius).</li>
+    <li><b>Auto-train</b> dropdown in a city keeps training a unit whenever affordable.</li>
+    <li><b>Settings</b> (⚙️ in menu): movement arrows show each unit's planned destination; auto-select puts newly trained units into your selection. Saved for the whole session.</li>
+  </ul><h4>Rules</h4><ul>
     <li>Income is generated every second from your cities, surrounding terrain and buildings. Extra cities give diminishing returns (each additional city produces 80% of the previous one).</li>
     <li>Points: +${DEFS.game.points.city} per city, +${DEFS.game.points.tech} per tech, +${DEFS.game.points.kill} per kill, small amounts for exploring; temples generate points over time.</li>
     <li>Cities can't be attacked in the first ${DEFS.game.peaceMs / 1000}s (peace period).</li>
+    <li>Victory: reach ${DEFS.game.pointsToWin} points, have the most points at 10 minutes, or eliminate everyone. "Last player standing" mode has no timer or point goal.</li>
     <li>Slow mode: 75% reduced income and 5× slower unit movement.</li>
+    <li>Ranged units (archer, catapult, boats) fire from distance without taking retaliation.</li>
   </ul>`;
   el.innerHTML = h;
 }
+
+// tutorial modal
+const TUTORIAL_PAGES = [
+  ['Welcome', `<p>Mini Empires is a <b>real-time</b> strategy game — no turns, everyone acts at once. A match lasts at most 10 minutes.</p><p><b>Goal:</b> reach the point target, have the most points when time runs out, or wipe out every rival.</p>`],
+  ['Explore', `<p>The map starts hidden in fog. Move your ⚔️ warrior (and 👁️ scouts) outward to reveal terrain, find 🏕️ neutral villages to capture as free cities, and locate your enemies.</p><p><i>Click a unit, then click a tile — it will pathfind there on its own.</i></p>`],
+  ['Economy', `<p>Every second your cities generate 🍎 food, 🪵 wood, 🪨 stone, 🪙 gold and 🔬 science from the surrounding terrain.</p><p>Select a city (double-click it) and construct buildings — Farm, Sawmill, Mine, Market, Library — to boost income.</p>`],
+  ['Research', `<p>Open 🔬 <b>Research</b> and spend science on technologies. Techs unlock stronger units (Archer, Knight, Catapult, Mountain Giant), buildings (Walls, Temple, Port) and bonuses — and each tech is worth points.</p>`],
+  ['Army & combat', `<p>Train units in your cities (or set <b>Auto-train</b>). Group units by clicking several of them, then click a tile to march the whole army.</p><p>Walk into an enemy to fight. Archers/catapults shoot from range without retaliation. Use the <b>Auto-attack</b> button to make units chase enemies within 3/6/9 tiles automatically.</p>`],
+  ['Boats & giants', `<p>Research <b>Seafaring</b> and build a <b>Port</b> in a coastal city — nearby water (marked ⚓) lets units board 🛶 boats: fast, ranged, and they can land anywhere.</p><p>The 🧌 <b>Mountain Giant</b> (Mountain Lore tech) is slow and expensive but walks over mountains.</p>`],
+  ['Cities & expansion', `<p>Capture 🏕️ villages or train 🚩 Settlers (Expansion tech) to found new cities — each city adds income and points. Attack enemy cities to conquer them; Walls make yours tougher.</p>`],
+  ['Diplomacy & winning', `<p>Use the chat and the Players panel to propose <b>alliances</b> — allies don't fight each other and share an allies-only chat. Breaking an alliance is one click, so watch your back.</p><p>Now create a game, add a bot, and try it! 🏆</p>`],
+];
+let tutPage = 0;
+function renderTutorial() {
+  const [title, body] = TUTORIAL_PAGES[tutPage];
+  $('tutorial-title').textContent = `🎓 ${title}`;
+  $('tutorial-content').innerHTML = body;
+  $('tutorial-step').textContent = `${tutPage + 1} / ${TUTORIAL_PAGES.length}`;
+  $('tutorial-prev').disabled = tutPage === 0;
+  $('tutorial-next').textContent = tutPage === TUTORIAL_PAGES.length - 1 ? 'Finish' : 'Next ▶';
+}
+$('tutorial-btn').onclick = () => { tutPage = 0; renderTutorial(); $('tutorial-modal').classList.remove('hidden'); };
+$('tutorial-close').onclick = () => $('tutorial-modal').classList.add('hidden');
+$('tutorial-prev').onclick = () => { if (tutPage > 0) { tutPage--; renderTutorial(); } };
+$('tutorial-next').onclick = () => {
+  if (tutPage === TUTORIAL_PAGES.length - 1) $('tutorial-modal').classList.add('hidden');
+  else { tutPage++; renderTutorial(); }
+};
 
 // chat
 $('chat-input').addEventListener('keydown', (e) => {
@@ -498,9 +549,30 @@ function render() {
   ctx.save();
   ctx.translate(canvas.width / 2 - cam.x, canvas.height / 2 - cam.y);
 
+  // water tiles within port range of an explored city that has a port
+  const portTiles = new Set();
+  for (const c of state.cities) {
+    if (!c.buildings.includes('port')) continue;
+    const R = DEFS.buildings.port.portRange || 3;
+    for (let dq = -R; dq <= R; dq++) {
+      for (let dr = Math.max(-R, -dq - R); dr <= Math.min(R, -dq + R); dr++) {
+        const k = `${c.q + dq},${c.r + dr}`;
+        const t = tileMap.get(k);
+        if (t && t.terrain === 'water') portTiles.add(k);
+      }
+    }
+  }
+
   for (const t of tileMap.values()) {
     const { x, y } = hexToPx(t.q, t.r);
     drawHex(x, y, cam.scale * 0.96, TERRAIN_COLORS[t.terrain], '#0d1420');
+    if (portTiles.has(`${t.q},${t.r}`)) {
+      drawHex(x, y, cam.scale * 0.8, 'rgba(120,200,255,0.18)', 'rgba(140,210,255,0.5)');
+      if (cam.scale > 22) {
+        ctx.font = `${cam.scale * 0.4}px sans-serif`; ctx.textAlign = 'center';
+        ctx.fillText('⚓', x, y + cam.scale * 0.15);
+      }
+    }
     if (t.bonus && cam.scale > 20) {
       ctx.font = `${cam.scale * 0.55}px sans-serif`; ctx.textAlign = 'center';
       ctx.fillText(BONUS_ICONS[t.bonus], x, y + cam.scale * 0.2);
@@ -547,7 +619,7 @@ function render() {
     ctx.fillStyle = myColor(u.ownerId); ctx.fill();
     ctx.strokeStyle = '#0d1420'; ctx.stroke();
     ctx.font = `${cam.scale * 0.5}px sans-serif`; ctx.textAlign = 'center';
-    ctx.fillText(UNIT_ICONS[u.type], x, y + cam.scale * 0.17);
+    ctx.fillText(u.boat ? '🛶' : UNIT_ICONS[u.type], x, y + cam.scale * 0.17);
     drawBar(x, y + cam.scale * 0.55, u.hp / u.maxHp);
     if (selected && selected.kind === 'units' && selected.ids.includes(u.id)) {
       ctx.beginPath(); ctx.arc(x, y, cam.scale * 0.52, 0, Math.PI * 2);

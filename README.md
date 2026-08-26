@@ -7,18 +7,19 @@ Polytopia, Catan and Forge of Empires. Games last at most 10 minutes.
 
 ## Features
 - **Online multiplayer** over WebSockets, plus **AI bots** with easy/medium/hard difficulty
-- **Random map** every game (terrain blobs, bonus resources, neutral villages)
+- **Random map** every game — 6 sizes (Tiny to Gigantic) and 6 terrain types (Pangea, Continents, Islands, Lakes, Dryland, Mountain pass)
 - **5 civilizations** with different strengths
 - **Fog of war** — explore the map with your units
 - **Economy**: food, wood, stone, gold and science income from cities, terrain and buildings
 - **Cities**: capture neutral villages or found new cities with settlers, construct 7 building types
-- **Tech tree**: 10 technologies unlocking units, buildings and bonuses
-- **Armies**: 7 unit types, real-time movement and combat, city sieges
+- **Tech tree**: 12 technologies unlocking units, buildings and bonuses
+- **Armies**: 8 unit types (incl. mountain-climbing Giants), A* pathfinding with congestion avoidance, real-time combat, city sieges, auto-attack radius (3/6/9 tiles)
+- **Boats & ports**: build a Port (Seafaring tech) in a coastal city — nearby water lets units board fast ranged boats
 - **Diplomacy**: alliances and chat (all players or allies only)
 - **Win** by eliminating all opponents, reaching 1500 points, or having the most points when the 10-minute timer ends. The first 90 seconds are a peace period (cities can't be attacked). The host can also pick **Last player standing** mode (no points/timer — play until one player remains).
 - **Game speeds**: Bullet (default) or Slow (75% reduced income, 5× slower unit movement)
 - **Settings** (session-persistent): show planned movement arrows, auto-select newly trained units
-- **In-game wiki** with full stats for every unit, building and tech
+- **In-game wiki** with full stats, shortcuts and mechanics, plus an interactive **tutorial** from the main menu
 
 ## Run
 
