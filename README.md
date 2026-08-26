@@ -2,13 +2,13 @@
 
 **Play in your browser (single-player vs bots):** https://giftedhoneybee.github.io/Small-Kingdoms/
 
-A real-time (no turns) online multiplayer strategy game for 2–4 players — a mix of
+A real-time (no turns) online multiplayer strategy game for 2–10 players — a mix of
 Polytopia, Catan and Forge of Empires. Games last at most 10 minutes.
 
 ## Features
 - **Online multiplayer** over WebSockets, plus **AI bots** with easy/medium/hard difficulty
 - **Random map** every game — 6 sizes (Tiny to Gigantic) and 6 terrain types (Pangea, Continents, Islands, Lakes, Dryland, Mountain pass)
-- **5 civilizations** with different strengths
+- **6 unique tribes** (Valdorn, Sylvara, Kharim, Thalassi, Grimmark, Aurelia), each with real strengths *and* weaknesses — including the seafaring Thalassi water tribe
 - **Fog of war** — explore the map with your units
 - **Economy**: food, wood, stone, gold and science income from cities, terrain and buildings
 - **Cities**: capture neutral villages or found new cities with settlers, construct 7 building types
@@ -18,8 +18,9 @@ Polytopia, Catan and Forge of Empires. Games last at most 10 minutes.
 - **Diplomacy**: alliances and chat (all players or allies only)
 - **Win** by eliminating all opponents, reaching 1500 points, or having the most points when the 10-minute timer ends. The first 90 seconds are a peace period (cities can't be attacked). The host can also pick **Last player standing** mode (no points/timer — play until one player remains).
 - **Game speeds**: Bullet (default) or Slow (75% reduced income, 5× slower unit movement)
-- **Settings** (session-persistent): show planned movement arrows, auto-select newly trained units
-- **In-game wiki** with full stats, shortcuts and mechanics, plus an interactive **tutorial** from the main menu
+- **Settings** (session-persistent): graphics style (Classic flat / New blocky / New + animations), show planned movement arrows, auto-select newly trained units
+- **In-game wiki** with full stats, shortcuts and mechanics
+- **Interactive tutorial**: a guided real practice match vs a passive bot with step boxes, highlighted UI and map markers
 
 ## Run
 

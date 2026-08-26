@@ -1,30 +1,35 @@
 // Static game definitions shared with the client via the "defs" message.
 
 const CIVS = {
-  imperius: {
-    name: 'Imperius', color: '#e05252',
-    desc: '+25% gold income, cheaper buildings (-10%)',
-    goldMult: 1.25, buildDiscount: 0.9,
+  valdorn: {
+    name: 'Valdorn', color: '#e05252',
+    desc: 'Warlords: units +15% attack, warriors +2 attack. Weakness: -20% science',
+    atkMult: 1.15, warriorAtkBonus: 2, sciMult: 0.8,
   },
-  bardur: {
-    name: 'Bardur', color: '#5290e0',
-    desc: '+25% food income, warriors +2 attack',
-    foodMult: 1.25, warriorAtkBonus: 2,
+  sylvara: {
+    name: 'Sylvara', color: '#52c47a',
+    desc: 'Forest folk: +50% wood income, buildings -15% cost. Weakness: units 15% slower',
+    woodMult: 1.5, buildDiscount: 0.85, speedMult: 1.15,
   },
-  oumaji: {
-    name: 'Oumaji', color: '#e0c352',
-    desc: 'Units move 25% faster, starts with a scout',
-    speedMult: 0.75, startScout: true,
+  kharim: {
+    name: 'Kharim', color: '#e0c352',
+    desc: 'Desert nomads: units move 30% faster, starts with a scout. Weakness: -25% food income',
+    speedMult: 0.7, startScout: true, foodMult: 0.75,
   },
-  quetzali: {
-    name: 'Quetzali', color: '#52c47a',
-    desc: '+30% city defense, walls are free after research',
-    defMult: 1.3, freeWalls: true,
+  thalassi: {
+    name: 'Thalassi', color: '#52b8c4',
+    desc: 'Sea people: starts with Seafaring, boats 30% faster and +3 attack, +25% gold. Weakness: -20% stone, land units -10% attack',
+    startTech: 'seafaring', boatMoveMult: 0.7, boatAtkBonus: 3, goldMult: 1.25, stoneMult: 0.8, landAtkMult: 0.9,
   },
-  zebasi: {
-    name: 'Zebasi', color: '#b06cd9',
-    desc: '+30% science, starts with Farming researched',
-    sciMult: 1.3, startTech: 'farming',
+  grimmark: {
+    name: 'Grimmark', color: '#9aa4b5',
+    desc: 'Mountain clans: +50% stone, +25% defense, starts with Masonry, free walls. Weakness: -20% gold, units 10% slower',
+    stoneMult: 1.5, defMult: 1.25, startTech: 'masonry', freeWalls: true, goldMult: 0.8, speedMult: 1.1,
+  },
+  aurelia: {
+    name: 'Aurelia', color: '#b06cd9',
+    desc: 'Scholars: +40% science, techs cost 15% less. Weakness: units -15% attack',
+    sciMult: 1.4, techCostMult: 0.85, atkMult: 0.85,
   },
 };
 
@@ -85,7 +90,7 @@ const GAME = {
   tickMs: 1000,
   peaceMs: 90 * 1000, // no city attacks in the first 90s
   mapRadius: 11,
-  maxPlayers: 4,
+  maxPlayers: 10,
   points: { tech: 12, city: 40, kill: 8, tileExplored: 0.05 },
 };
 

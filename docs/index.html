@@ -64,7 +64,7 @@
           <button id="remove-bot-btn">Remove bot</button>
           <button id="start-btn" class="primary">Start game</button>
         </div>
-        <p class="hint">Share this page's URL with friends — they can join from the open games list. 2-4 players (bots count).</p>
+        <p class="hint">Share this page's URL with friends — they can join from the open games list. 2-10 players (bots count).</p>
       </div>
     </div>
   </div>
@@ -124,6 +124,7 @@
       <h3>⚙️ Settings</h3>
       <label class="setting-row">Graphics style
         <select id="set-graphics">
+          <option value="animated">New + animations (blocky, moving)</option>
           <option value="new">New (blocky, Polytopia-style)</option>
           <option value="classic">Classic (flat tiles + emoji)</option>
         </select>
@@ -134,17 +135,13 @@
     </div>
   </div>
 
-  <!-- Tutorial modal -->
-  <div id="tutorial-modal" class="modal hidden">
-    <div class="panel wiki-panel">
-      <h3 id="tutorial-title">🎓 Tutorial</h3>
-      <div id="tutorial-content"></div>
-      <div class="row">
-        <button id="tutorial-prev">◀ Back</button>
-        <span id="tutorial-step" class="hint"></span>
-        <button id="tutorial-next" class="primary">Next ▶</button>
-      </div>
-      <button id="tutorial-close">Close</button>
+  <!-- Interactive tutorial box -->
+  <div id="tut-box" class="hidden">
+    <h4 id="tut-title"></h4>
+    <div id="tut-text"></div>
+    <div class="row">
+      <button id="tut-next" class="primary hidden">Next ▶</button>
+      <button id="tut-skip">Skip tutorial</button>
     </div>
   </div>
 

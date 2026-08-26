@@ -7,7 +7,7 @@ const ws = window.LocalSocket
 let DEFS = null, myId = null, state = null;
 const tileMap = new Map();
 let needsDraw = true;
-let selectedCiv = 'imperius';
+let selectedCiv = 'valdorn';
 let selected = null; // {kind:'units', ids:[]} | {kind:'city', id}
 let groupDest = null; // current group move destination
 let cam = { x: 0, y: 0, scale: 34 };
@@ -23,7 +23,7 @@ const TERRAIN_COLORS = {
   water: '#1d4e79', grass: '#4e8f3c', forest: '#2d6b2a', hill: '#8a7b52', mountain: '#6b6f78',
 };
 const BONUS_ICONS = { fruit: '🍇', game: '🦌', ore: '⛏️', crop: '🌾', fish: '🐟' };
-const PLAYER_COLORS = ['#e05252', '#5290e0', '#e0c352', '#52c47a'];
+const PLAYER_COLORS = ['#e05252', '#5290e0', '#e0c352', '#52c47a', '#b06cd9', '#e08a3c', '#52c4c4', '#e06cb0', '#9aa4b5', '#8fe052'];
 let colorById = {};
 function assignColors(list) {
   colorById = {};
@@ -121,8 +121,10 @@ function onState(s) {
     $('game').classList.remove('hidden');
     resize();
     centerOnHome();
+    if (TUT.active) renderTutStep();
   }
   updateHud();
+  tutCheck();
   if (s.over && s.winner) showGameOver();
 }
 
@@ -376,39 +378,76 @@ function renderWiki() {
   el.innerHTML = h;
 }
 
-// tutorial modal
-const TUTORIAL_PAGES = [
-  ['Welcome', `<p>Mini Empires is a <b>real-time</b> strategy game — no turns, everyone acts at once. A match lasts at most 10 minutes.</p><p><b>Goal:</b> reach the point target, have the most points when time runs out, or wipe out every rival.</p>`],
-  ['Explore', `<p>The map starts hidden in fog. Move your ⚔️ warrior (and 👁️ scouts) outward to reveal terrain, find 🏕️ neutral villages to capture as free cities, and locate your enemies.</p><p><i>Click a unit, then click a tile — it will pathfind there on its own.</i></p>`],
-  ['Economy', `<p>Every second your cities generate 🍎 food, 🪵 wood, 🪨 stone, 🪙 gold and 🔬 science from the surrounding terrain.</p><p>Select a city (double-click it) and construct buildings — Farm, Sawmill, Mine, Market, Library — to boost income.</p>`],
-  ['Research', `<p>Open 🔬 <b>Research</b> and spend science on technologies. Techs unlock stronger units (Archer, Knight, Catapult, Mountain Giant), buildings (Walls, Temple, Port) and bonuses — and each tech is worth points.</p>`],
-  ['Army & combat', `<p>Train units in your cities (or set <b>Auto-train</b>). Group units by clicking several of them, then click a tile to march the whole army.</p><p>Walk into an enemy to fight. Archers/catapults shoot from range without retaliation. Use the <b>Auto-attack</b> button to make units chase enemies within 3/6/9 tiles automatically.</p>`],
-  ['Boats & giants', `<p>Research <b>Seafaring</b> and build a <b>Port</b> in a coastal city — nearby water (marked ⚓) lets units board 🛶 boats: fast, ranged, and they can land anywhere.</p><p>The 🧌 <b>Mountain Giant</b> (Mountain Lore tech) is slow and expensive but walks over mountains.</p>`],
-  ['Cities & expansion', `<p>Capture 🏕️ villages or train 🚩 Settlers (Expansion tech) to found new cities — each city adds income and points. Attack enemy cities to conquer them; Walls make yours tougher.</p>`],
-  ['Diplomacy & winning', `<p>Use the chat and the Players panel to propose <b>alliances</b> — allies don't fight each other and share an allies-only chat. Breaking an alliance is one click, so watch your back.</p><p>Now create a game, add a bot, and try it! 🏆</p>`],
+// ---------------- Interactive tutorial ----------------
+// Starts a real practice match vs a passive bot and guides the player with
+// step boxes, highlighted UI elements and a pulsing marker on the map.
+const TUT = { active: false, step: 0, baseUnits: 0, baseTechs: 0, baseTiles: 0, chatted: false };
+const TUT_STEPS = [
+  { title: 'Welcome, chief!', text: 'This is a <b>real practice match</b> against a peaceful bot. The game runs in real time — your empire earns resources every second while you learn. Your capital is marked below.', next: true, canvas: () => tutCapital() },
+  { title: 'Select your warrior', text: 'Click your ⚔️ <b>warrior</b> — the little figure standing next to your capital.', check: () => selected && selected.kind === 'units' },
+  { title: 'Move & explore', text: 'Now <b>click a tile far away</b>. The warrior pathfinds there on its own and lifts the fog as it walks. Reveal some new land to continue.', check: () => tileMap.size >= TUT.baseTiles + 12 },
+  { title: 'Select your city', text: 'Press <b>Esc</b> to deselect, then <b>double-click your capital</b> (the tile with the tower) to select the city itself.', check: () => selected && selected.kind === 'city', canvas: () => tutCapital() },
+  { title: 'Build a building', text: 'In the right panel, press 🏗️ <b>Sawmill</b> (20🪙). Buildings raise your income every second — economy wins games.', el: 'select-panel', check: () => state.cities.some(c => c.ownerId === myId && c.buildings.length) },
+  { title: 'Train an army', text: 'With the city still selected, <b>train a unit</b> — a ⚔️ Warrior is cheapest. Tip: the <b>Auto-train</b> dropdown keeps producing units for you.', el: 'select-panel', check: () => state.units.filter(u => u.ownerId === myId).length > TUT.baseUnits, canvas: () => tutCapital() },
+  { title: 'Research', text: 'Open 🔬 <b>Research</b> (top of the right panel) and research any tech. Science trickles in every second, so you may need to wait a moment.', el: 'tech-btn', check: () => state.techs.length > TUT.baseTechs },
+  { title: 'Chat & diplomacy', text: 'Type something in the <b>chat</b> (bottom right) and press Enter. In the Players panel you can propose <b>alliances</b> the same way.', el: 'chat-input', check: () => TUT.chatted },
+  { title: 'Combat', text: 'To fight, simply <b>move units onto enemies</b> or their cities (after the 90s peace period). Archers & catapults fire from range, and the ⚔️ Auto-attack button makes units engage on their own. Capture 🏕️ villages for free cities!', next: true },
+  { title: 'You are ready! 🏆', text: 'Win by reaching the ⭐ point goal, having the most points at 10:00, or eliminating everyone — the 📖 Wiki has every stat. Keep playing this practice match, or press Finish to return to the menu.', finish: true },
 ];
-let tutPage = 0;
-function renderTutorial() {
-  const [title, body] = TUTORIAL_PAGES[tutPage];
-  $('tutorial-title').textContent = `🎓 ${title}`;
-  $('tutorial-content').innerHTML = body;
-  $('tutorial-step').textContent = `${tutPage + 1} / ${TUTORIAL_PAGES.length}`;
-  $('tutorial-prev').disabled = tutPage === 0;
-  $('tutorial-next').textContent = tutPage === TUTORIAL_PAGES.length - 1 ? 'Finish' : 'Next ▶';
+function tutCapital() {
+  const c = state && state.cities.find(c => c.ownerId === myId && c.capital);
+  return c ? { q: c.q, r: c.r } : null;
 }
-$('tutorial-btn').onclick = () => { tutPage = 0; renderTutorial(); $('tutorial-modal').classList.remove('hidden'); };
-$('tutorial-close').onclick = () => $('tutorial-modal').classList.add('hidden');
-$('tutorial-prev').onclick = () => { if (tutPage > 0) { tutPage--; renderTutorial(); } };
-$('tutorial-next').onclick = () => {
-  if (tutPage === TUTORIAL_PAGES.length - 1) $('tutorial-modal').classList.add('hidden');
-  else { tutPage++; renderTutorial(); }
+let tutGlowEl = null;
+function renderTutStep() {
+  const s = TUT_STEPS[TUT.step];
+  $('tut-title').textContent = `🎓 ${TUT.step + 1}/${TUT_STEPS.length} — ${s.title}`;
+  $('tut-text').innerHTML = s.text;
+  $('tut-next').classList.toggle('hidden', !s.next && !s.finish);
+  $('tut-next').textContent = s.finish ? 'Finish 🏁' : 'Next ▶';
+  $('tut-box').classList.remove('hidden');
+  if (tutGlowEl) { tutGlowEl.classList.remove('tut-glow'); tutGlowEl = null; }
+  if (s.el) { tutGlowEl = $(s.el); tutGlowEl.classList.add('tut-glow'); }
+  if (state) {
+    TUT.baseTiles = tileMap.size;
+    TUT.baseUnits = state.units.filter(u => u.ownerId === myId).length;
+    TUT.baseTechs = state.techs.length;
+  }
+  needsDraw = true;
+}
+function tutCheck() {
+  if (!TUT.active || !state) return;
+  const s = TUT_STEPS[TUT.step];
+  if (s.check && s.check()) tutAdvance();
+}
+function tutAdvance() {
+  if (TUT_STEPS[TUT.step].finish) { location.reload(); return; }
+  TUT.step++;
+  if (TUT.step >= TUT_STEPS.length) endTutorial();
+  else renderTutStep();
+}
+function endTutorial() {
+  TUT.active = false;
+  $('tut-box').classList.add('hidden');
+  if (tutGlowEl) { tutGlowEl.classList.remove('tut-glow'); tutGlowEl = null; }
+  needsDraw = true;
+}
+$('tutorial-btn').onclick = () => {
+  if (TUT.active || state) return;
+  TUT.active = true; TUT.step = 0; TUT.chatted = false;
+  ws.send(JSON.stringify({ type: 'createRoom', name: $('name-input').value || 'Chief', civ: selectedCiv }));
+  setTimeout(() => ws.send(JSON.stringify({ type: 'addBot', level: 'passive' })), 250);
+  setTimeout(() => ws.send(JSON.stringify({ type: 'start', winMode: 'points', speed: 'bullet', mapSize: 'small', mapType: 'pangea' })), 500);
 };
+$('tut-next').onclick = tutAdvance;
+$('tut-skip').onclick = endTutorial;
 
 // chat
 $('chat-input').addEventListener('keydown', (e) => {
   if (e.key === 'Enter' && e.target.value.trim()) {
     ws.send(JSON.stringify({ type: 'chat', text: e.target.value.trim(), alliesOnly: $('chat-allies').checked }));
     e.target.value = '';
+    TUT.chatted = true;
   }
 });
 function addChat(msg) {
@@ -556,9 +595,12 @@ function getSortedTiles() {
 
 function render() {
   requestAnimationFrame(render);
+  const animated = SETTINGS.graphics === 'animated';
+  if (animated) needsDraw = true;
   if (!state || !needsDraw) return;
   needsDraw = false;
   const blocky = SETTINGS.graphics !== 'classic';
+  GFX.setTime(animated ? performance.now() / 1000 : 0);
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   if (blocky) { ctx.fillStyle = '#14324e'; ctx.fillRect(0, 0, canvas.width, canvas.height); }
   ctx.save();
@@ -661,6 +703,25 @@ function render() {
     if (selected && selected.kind === 'units' && selected.ids.includes(u.id)) {
       ctx.beginPath(); ctx.arc(x, y, cam.scale * 0.52, 0, Math.PI * 2);
       ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.stroke();
+    }
+  }
+
+  // tutorial: pulsing marker + bouncing arrow over the current step's tile
+  if (TUT.active) {
+    const tgt = TUT_STEPS[TUT.step].canvas && TUT_STEPS[TUT.step].canvas();
+    if (tgt) {
+      const { x, y } = hexToPx(tgt.q, tgt.r);
+      const pulse = Math.sin(performance.now() / 250);
+      ctx.beginPath(); ctx.arc(x, y, cam.scale * (1.15 + pulse * 0.08), 0, Math.PI * 2);
+      ctx.strokeStyle = '#ffd54a'; ctx.lineWidth = 3; ctx.stroke();
+      const ay = y - cam.scale * 1.7 + pulse * cam.scale * 0.15;
+      ctx.fillStyle = '#ffd54a';
+      ctx.beginPath();
+      ctx.moveTo(x, ay + cam.scale * 0.45);
+      ctx.lineTo(x - cam.scale * 0.3, ay);
+      ctx.lineTo(x + cam.scale * 0.3, ay);
+      ctx.closePath(); ctx.fill();
+      needsDraw = true; // keep the marker pulsing
     }
   }
   ctx.restore();

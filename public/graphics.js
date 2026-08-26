@@ -4,6 +4,10 @@
 (function () {
   'use strict';
 
+  // animation clock in seconds; 0 disables all motion (set by client each frame)
+  let ANIM = 0;
+  function setTime(t) { ANIM = t; }
+
   // deterministic per-tile pseudo-random in [0,1)
   function tileRand(q, r, salt) {
     let h = (q * 374761393 + r * 668265263 + (salt || 0) * 2147483647) | 0;
@@ -70,7 +74,8 @@
       ctx.lineWidth = Math.max(1, s * 0.05);
       for (let i = 0; i < 2; i++) {
         const wy = y - s * 0.25 + i * s * 0.4 + tileRand(t.q, t.r, i) * s * 0.15;
-        const wx = x - s * 0.4 + tileRand(t.q, t.r, i + 7) * s * 0.3;
+        const wx = x - s * 0.4 + tileRand(t.q, t.r, i + 7) * s * 0.3 +
+          (ANIM ? Math.sin(ANIM * 1.8 + tileRand(t.q, t.r, i + 11) * 6.28) * s * 0.09 : 0);
         ctx.beginPath();
         ctx.moveTo(wx, wy);
         ctx.quadraticCurveTo(wx + s * 0.2, wy - s * 0.09, wx + s * 0.4, wy);
@@ -227,13 +232,14 @@
       ctx.beginPath();
       ctx.moveTo(tx, ty); ctx.lineTo(tx + tw / 2, ty - s * 0.2); ctx.lineTo(tx + tw, ty);
       ctx.closePath(); ctx.fill();
-      // flag
+      // flag (flutters when animation is on)
+      const flap = ANIM ? Math.sin(ANIM * 5 + x * 0.1) * s * 0.05 : 0;
       ctx.strokeStyle = '#555'; ctx.beginPath();
       ctx.moveTo(tx + tw / 2, ty - s * 0.2); ctx.lineTo(tx + tw / 2, ty - s * 0.42); ctx.stroke();
       ctx.fillStyle = color;
       ctx.beginPath();
       ctx.moveTo(tx + tw / 2, ty - s * 0.42);
-      ctx.lineTo(tx + tw / 2 + s * 0.2, ty - s * 0.35);
+      ctx.lineTo(tx + tw / 2 + s * 0.2, ty - s * 0.35 + flap);
       ctx.lineTo(tx + tw / 2, ty - s * 0.28);
       ctx.closePath(); ctx.fill();
     }
@@ -265,6 +271,7 @@
     ctx.beginPath();
     ctx.ellipse(x, y + b * 0.62, b * 0.55, b * 0.18, 0, 0, Math.PI * 2);
     ctx.fillStyle = 'rgba(0,0,0,0.25)'; ctx.fill();
+    if (ANIM) y += Math.sin(ANIM * 5 + x * 0.07 + y * 0.05) * s * 0.04;
 
     if (type === 'giant') {
       const g = b * 1.35;
@@ -359,6 +366,7 @@
 
   function drawBoat(ctx, x, y, s, color) {
     const b = s * 0.55;
+    if (ANIM) y += Math.sin(ANIM * 2.2 + x * 0.05) * s * 0.05;
     // hull
     ctx.beginPath();
     ctx.moveTo(x - b * 0.9, y);
@@ -400,5 +408,5 @@
     ctx.closePath();
   }
 
-  window.GFX = { drawTile, drawBonus, drawVillage, drawCity, drawUnit, drawBoat, drawAnchor, shade };
+  window.GFX = { drawTile, drawBonus, drawVillage, drawCity, drawUnit, drawBoat, drawAnchor, shade, setTime };
 })();

@@ -116,9 +116,10 @@ function generateMap(seed, opts = {}) {
     if (TERRAIN[terrain].move) land.push(t);
   }
 
-  // start positions: 4 spread out land tiles with a decent connected area
+  // start positions: spread out land tiles with a decent connected area
   const starts = [];
-  const angles = [0.125, 0.375, 0.625, 0.875].map(a => a * Math.PI * 2 + rnd() * 0.5);
+  const nStarts = Math.min(10, Math.max(2, opts.players || 4));
+  const angles = Array.from({ length: nStarts }, (_, i) => ((i + 0.5) / nStarts) * Math.PI * 2 + rnd() * (Math.PI / nStarts));
   for (const ang of angles) {
     let placed = null;
     for (let rad = Math.floor(R * 0.62); rad >= 2 && !placed; rad--) {
@@ -129,7 +130,7 @@ function generateMap(seed, opts = {}) {
     }
     if (!placed) {
       placed = land.find(t => !starts.includes(t) && regionSize(tiles, t, 12) >= 12) ||
-        land.find(t => !starts.includes(t));
+        land.find(t => !starts.includes(t)) || land[0];
     }
     placed.terrain = 'grass'; placed.bonus = null;
     // guarantee at least 2 walkable neighbors so units can spawn/leave

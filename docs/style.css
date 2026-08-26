@@ -63,3 +63,9 @@ button.primary:hover { background: #e0a83d; }
 #wiki-content th { background: #22304a; }
 #wiki-content h4 { margin: 10px 0 4px; }
 #wiki-content ul { font-size: 13px; padding-left: 18px; }
+
+/* interactive tutorial */
+#tut-box { position: fixed; left: 50%; transform: translateX(-50%); bottom: 16px; width: 400px; max-width: 92vw; background: #1b2940; border: 2px solid #ffd54a; border-radius: 10px; padding: 12px 14px; z-index: 30; box-shadow: 0 4px 18px rgba(0,0,0,.55); font-size: 13px; }
+#tut-box h4 { margin: 0 0 6px; color: #ffd54a; }
+#tut-box .row { margin-top: 8px; display: flex; gap: 8px; justify-content: flex-end; }
+.tut-glow { box-shadow: 0 0 0 3px #ffd54a, 0 0 16px #ffd54a; border-radius: 6px; }

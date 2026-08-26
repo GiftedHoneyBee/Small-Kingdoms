@@ -3,6 +3,7 @@ const { UNITS, BUILDINGS, TECHS, TERRAIN } = require('./data');
 const { neighbors, hexDist, key } = require('./map');
 
 const LEVELS = {
+  passive: { actMs: 4500, aggro: 0, smart: 0.3 }, // tutorial opponent: expands but never attacks
   easy:   { actMs: 3500, aggro: 0.25, smart: 0.4 },
   medium: { actMs: 2200, aggro: 0.5,  smart: 0.7 },
   hard:   { actMs: 1200, aggro: 0.75, smart: 1.0 },

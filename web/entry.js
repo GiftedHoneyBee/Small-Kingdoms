@@ -5,7 +5,7 @@ const { Game } = require('../server/game');
 const { Bot } = require('../server/bot');
 const { CIVS, UNITS, BUILDINGS, TECHS, GAME, BOAT } = require('../server/data');
 
-const BOT_NAMES = ['Ada', 'Brutus', 'Cleo', 'Darius', 'Elena', 'Falco'];
+const BOT_NAMES = ['Ada', 'Brutus', 'Cleo', 'Darius', 'Elena', 'Falco', 'Gaius', 'Hilda', 'Ivar', 'Juno'];
 const sanitize = s => String(s || '').replace(/[<>]/g, '').slice(0, 20);
 
 class LocalSocket {
@@ -45,7 +45,7 @@ class LocalSocket {
       case 'createRoom':
         this.room = {
           id: 'LOCAL', game: null, bots: [],
-          players: [{ id: this.playerId, name: sanitize(m.name) || 'Player', civ: m.civ || 'imperius', isBot: false }],
+          players: [{ id: this.playerId, name: sanitize(m.name) || 'Player', civ: m.civ || 'valdorn', isBot: false }],
         };
         this._lobby();
         break;
@@ -60,7 +60,7 @@ class LocalSocket {
         r.players.push({
           id: `bot${this.nextBot}`, name: `${BOT_NAMES[this.nextBot % BOT_NAMES.length]} (bot)`,
           civ: civKeys[Math.floor(Math.random() * civKeys.length)],
-          isBot: true, botLevel: ['easy', 'medium', 'hard'].includes(m.level) ? m.level : 'medium',
+          isBot: true, botLevel: ['easy', 'medium', 'hard', 'passive'].includes(m.level) ? m.level : 'medium',
         });
         this.nextBot++;
         this._lobby();

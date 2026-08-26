@@ -16,7 +16,7 @@ class Game {
     this.speed = opts.speed === 'slow' ? 'slow' : 'bullet';
     this.incomeMult = this.speed === 'slow' ? 0.25 : 1;
     this.moveMult = this.speed === 'slow' ? 5 : 1;
-    const { tiles, starts } = generateMap(seed, { mapSize: opts.mapSize, mapType: opts.mapType });
+    const { tiles, starts } = generateMap(seed, { mapSize: opts.mapSize, mapType: opts.mapType, players: playersInfo.length });
     this.mapSize = opts.mapSize || 'normal';
     this.mapType = opts.mapType || 'continents';
     this.tiles = tiles;
@@ -33,7 +33,7 @@ class Game {
 
     playersInfo.forEach((info, i) => {
       const p = {
-        id: info.id, name: info.name, civ: info.civ in CIVS ? info.civ : 'imperius',
+        id: info.id, name: info.name, civ: info.civ in CIVS ? info.civ : 'valdorn',
         isBot: !!info.isBot, botLevel: info.botLevel || 'medium',
         res: { food: 40, wood: 25, stone: 15, gold: 25, science: 0 },
         techs: new Set(), explored: new Set(), points: 0, kills: 0,
@@ -150,6 +150,18 @@ class Game {
     u.autoAttack = [0, 3, 6, 9].includes(range) ? range : (range ? 3 : 0);
   }
 
+  // attack value with civ modifiers applied
+  attackOf(u, stats) {
+    const civ = CIVS[this.player(u.ownerId).civ];
+    let atk = stats.atk * (civ.atkMult || 1);
+    if (u.boat) atk += civ.boatAtkBonus || 0;
+    else {
+      atk *= civ.landAtkMult || 1;
+      if (u.type === 'warrior') atk += civ.warriorAtkBonus || 0;
+    }
+    return atk;
+  }
+
   // effective combat/movement stats (boat overrides while embarked)
   unitStats(u) {
     const d = UNITS[u.type];
@@ -234,8 +246,9 @@ class Game {
     if (!p || !def || this.over || !p.alive) return;
     if (p.techs.has(tech)) return;
     if (def.req && !p.techs.has(def.req)) return;
-    if (p.res.science < def.cost) return;
-    p.res.science -= def.cost;
+    const cost = Math.round(def.cost * (CIVS[p.civ].techCostMult || 1));
+    if (p.res.science < cost) return;
+    p.res.science -= cost;
     p.techs.add(tech);
     p.points += GAME.points.tech;
   }
@@ -327,6 +340,8 @@ class Game {
       }
       if (civ.goldMult) inc.gold *= civ.goldMult;
       if (civ.foodMult) inc.food *= civ.foodMult;
+      if (civ.woodMult) inc.wood *= civ.woodMult;
+      if (civ.stoneMult) inc.stone *= civ.stoneMult;
       if (civ.sciMult) inc.science *= civ.sciMult;
       if (p.techs.has('banking')) inc.gold *= 1.5;
       for (const k of Object.keys(inc)) p.res[k] = Math.min(999, p.res[k] + inc[k] * this.incomeMult);
@@ -453,7 +468,7 @@ class Game {
         const target = this.rangedTarget(u, range);
         if (target) {
           const civ2 = CIVS[p.civ];
-          u.nextMoveAt = now + stats.moveMs * (civ2.speedMult || 1) * this.moveMult;
+          u.nextMoveAt = now + stats.moveMs * (u.boat ? (civ2.boatMoveMult || 1) : (civ2.speedMult || 1)) * this.moveMult;
           this.rangedAttack(u, target);
           continue;
         }
@@ -485,7 +500,7 @@ class Game {
         continue;
       }
       const civ = CIVS[p.civ];
-      u.nextMoveAt = now + stats.moveMs * (civ.speedMult || 1) * this.moveMult;
+      u.nextMoveAt = now + stats.moveMs * (u.boat ? (civ.boatMoveMult || 1) : (civ.speedMult || 1)) * this.moveMult;
 
       if (occ) { this.fight(u, occ); if (!this.units.has(occ.id)) occMap.delete(key(occ.q, occ.r)); continue; }
       const city = this.cityAt(step.q, step.r);
@@ -532,7 +547,7 @@ class Game {
       const dDef = this.unitStats(def);
       const defCity = this.cityAt(def.q, def.r);
       const defense = dDef.def * (CIVS[dp.civ].defMult || 1) * (defCity ? 1.5 : 1);
-      const dmg = Math.max(2, Math.round(aDef.atk - defense / 2 + Math.random() * 4));
+      const dmg = Math.max(2, Math.round(this.attackOf(u, aDef) - defense / 2 + Math.random() * 4));
       def.hp -= dmg; // no retaliation at range
       if (def.hp <= 0) {
         this.units.delete(def.id);
@@ -544,7 +559,7 @@ class Game {
       if (Date.now() - this.startTime < GAME.peaceMs) return;
       const cp = this.player(city.ownerId);
       const walls = city.buildings.includes('walls') ? BUILDINGS.walls.defBonus : 0;
-      const atk = aDef.atk * (u.type === 'catapult' ? 1.5 : 1);
+      const atk = this.attackOf(u, aDef) * (u.type === 'catapult' ? 1.5 : 1);
       const dmg = Math.max(1, Math.round(atk - (3 + walls) / 2 * (CIVS[cp.civ].defMult || 1) + Math.random() * 3));
       city.hp -= dmg; // no counter-damage at range
       if (city.hp <= 0) this.captureCity(u, city);
@@ -560,7 +575,7 @@ class Game {
   fight(att, def) {
     const ap = this.player(att.ownerId); const dp = this.player(def.ownerId);
     const aDef = this.unitStats(att); const dDef = this.unitStats(def);
-    let atk = aDef.atk + (att.type === 'warrior' && !att.boat ? (CIVS[ap.civ].warriorAtkBonus || 0) : 0);
+    let atk = this.attackOf(att, aDef);
     const defCity = this.cityAt(def.q, def.r);
     let defense = dDef.def * (CIVS[dp.civ].defMult || 1) * (defCity ? 1.5 : 1);
     const dmg = Math.max(2, Math.round(atk - defense / 2 + Math.random() * 4));
@@ -584,7 +599,7 @@ class Game {
     const ap = this.player(u.ownerId); const cp = this.player(city.ownerId);
     const aDef = this.unitStats(u);
     const walls = city.buildings.includes('walls') ? BUILDINGS.walls.defBonus : 0;
-    const atk = aDef.atk * (u.type === 'catapult' && !u.boat ? 1.5 : 1);
+    const atk = this.attackOf(u, aDef) * (u.type === 'catapult' && !u.boat ? 1.5 : 1);
     const dmg = Math.max(1, Math.round(atk - (3 + walls) / 2 * (CIVS[cp.civ].defMult || 1) + Math.random() * 3));
     city.hp -= dmg;
     u.hp -= Math.max(1, Math.round(3 + walls / 2 - aDef.def / 3));

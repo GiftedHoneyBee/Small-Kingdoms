@@ -18,7 +18,7 @@ const rooms = new Map(); // roomId -> room
 let nextRoom = 100;
 let nextBot = 1;
 
-const BOT_NAMES = ['Ada', 'Brutus', 'Cleo', 'Darius', 'Elena', 'Falco'];
+const BOT_NAMES = ['Ada', 'Brutus', 'Cleo', 'Darius', 'Elena', 'Falco', 'Gaius', 'Hilda', 'Ivar', 'Juno'];
 
 function send(ws, obj) {
   if (ws.readyState === 1) ws.send(JSON.stringify(obj));
@@ -96,7 +96,7 @@ wss.on('connection', (ws) => {
         const id = `R${nextRoom++}`;
         const r = { id, hostId: ws.playerId, players: [], game: null, bots: [] };
         rooms.set(id, r);
-        r.players.push({ id: ws.playerId, name: sanitize(m.name) || 'Player', civ: m.civ || 'imperius', isBot: false, ws });
+        r.players.push({ id: ws.playerId, name: sanitize(m.name) || 'Player', civ: m.civ || 'valdorn', isBot: false, ws });
         ws.roomId = id;
         broadcastLobby(r);
         break;
@@ -105,7 +105,7 @@ wss.on('connection', (ws) => {
       case 'joinRoom': {
         const r = rooms.get(m.roomId);
         if (!r || r.game || r.players.length >= GAME.maxPlayers) { send(ws, { type: 'error', text: 'Cannot join that room.' }); break; }
-        r.players.push({ id: ws.playerId, name: sanitize(m.name) || 'Player', civ: m.civ || 'bardur', isBot: false, ws });
+        r.players.push({ id: ws.playerId, name: sanitize(m.name) || 'Player', civ: m.civ || 'valdorn', isBot: false, ws });
         ws.roomId = r.id;
         broadcastLobby(r);
         break;
@@ -124,7 +124,7 @@ wss.on('connection', (ws) => {
         room.players.push({
           id: `bot${nextBot}`, name: `${BOT_NAMES[nextBot % BOT_NAMES.length]} (bot)`,
           civ: civKeys[Math.floor(Math.random() * civKeys.length)],
-          isBot: true, botLevel: ['easy', 'medium', 'hard'].includes(m.level) ? m.level : 'medium', ws: null,
+          isBot: true, botLevel: ['easy', 'medium', 'hard', 'passive'].includes(m.level) ? m.level : 'medium', ws: null,
         });
         nextBot++;
         broadcastLobby(room);
