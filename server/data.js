@@ -26,6 +26,11 @@ const CIVS = {
     desc: 'Mountain clans: +50% stone, +25% defense, starts with Masonry, free walls. Weakness: -20% gold, units 10% slower',
     stoneMult: 1.5, defMult: 1.25, startTech: 'masonry', freeWalls: true, goldMult: 0.8, speedMult: 1.1,
   },
+  veldros: {
+    name: 'Veldros', color: '#e08a3c',
+    desc: 'Harvest folk: starts with Farming, +100% food income. Weakness: units -33% HP, -40% stone income',
+    startTech: 'farming', foodMult: 2, hpMult: 0.67, stoneMult: 0.6,
+  },
   aurelia: {
     name: 'Aurelia', color: '#b06cd9',
     desc: 'Scholars: +40% science, techs cost 15% less. Weakness: units -15% attack',

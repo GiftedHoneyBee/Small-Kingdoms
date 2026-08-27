@@ -24,7 +24,7 @@ function neighbors(q, r) {
 const MAP_SIZES = {
   tiny: 0.25, small: 0.5, normal: 1, big: 2, huge: 4, gigantic: 10,
 };
-const MAP_TYPES = ['pangea', 'continents', 'islands', 'lakes', 'dryland', 'mountainpass'];
+const MAP_TYPES = ['pangea', 'continents', 'islands', 'lakes', 'dryland', 'mountainpass', 'ocean'];
 
 // smooth 2D value noise (hash grid + smoothstep interpolation)
 function makeNoise(rnd) {
@@ -64,6 +64,7 @@ const TYPE_PARAMS = {
   lakes:        { waterFrac: 0.25, edgeFall: 0.05, freq: 0.18, mtnFrac: 0.10, ridged: false },
   dryland:      { waterFrac: 0.03, edgeFall: 0.02, freq: 0.12, mtnFrac: 0.12, ridged: false },
   mountainpass: { waterFrac: 0.12, edgeFall: 0.10, freq: 0.11, mtnFrac: 0.33, ridged: true },
+  ocean:        { waterFrac: 0.80, edgeFall: 0.20, freq: 0.24, mtnFrac: 0.08, ridged: false }, // waterFrac randomized per game
 };
 
 function generateMap(seed, opts = {}) {
@@ -71,7 +72,8 @@ function generateMap(seed, opts = {}) {
   const sizeMult = MAP_SIZES[opts.mapSize] ?? 1;
   const type = MAP_TYPES.includes(opts.mapType) ? opts.mapType : 'continents';
   const R = Math.max(5, Math.round(GAME.mapRadius * Math.sqrt(sizeMult)));
-  const P = TYPE_PARAMS[type];
+  const P = { ...TYPE_PARAMS[type] };
+  if (type === 'ocean') P.waterFrac = 0.70 + rnd() * 0.20; // 70-90% water, varies per game
   const elevNoise = makeNoise(rnd);
   const mtnNoise = makeNoise(rnd);
   const bioNoise = makeNoise(rnd);
@@ -104,7 +106,7 @@ function generateMap(seed, opts = {}) {
     else if (c.elev < waterLvl) {
       terrain = 'water';
       // lakes/islands maps: small islands can poke out of big water bodies
-      if ((type === 'lakes' || type === 'islands') && c.elev > waterLvl - elevSpan * 0.03 && rnd() < 0.3) terrain = 'grass';
+      if ((type === 'lakes' || type === 'islands' || type === 'ocean') && c.elev > waterLvl - elevSpan * 0.03 && rnd() < 0.3) terrain = 'grass';
     } else if (c.m > mtnCut) terrain = 'mountain';
     else if (c.b > 0.62) terrain = 'forest';
     else if (c.b < 0.34) terrain = 'hill';

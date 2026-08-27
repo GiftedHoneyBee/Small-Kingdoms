@@ -96,7 +96,8 @@ class Game {
     }
     if (!spot) return null;
     const def = UNITS[type];
-    const hp = Math.round(def.hp * upgradeMult(this.unitLevel(ownerId, type)));
+    const civHp = CIVS[this.player(ownerId).civ].hpMult || 1;
+    const hp = Math.max(1, Math.round(def.hp * civHp * upgradeMult(this.unitLevel(ownerId, type))));
     const u = {
       id: uid('u'), ownerId, type, q: spot[0], r: spot[1],
       hp, maxHp: hp, nextMoveAt: 0, dest: null, autoAttack: 0,
@@ -195,7 +196,8 @@ class Game {
     if (kind === 'unit') {
       for (const u of this.units.values()) {
         if (u.ownerId !== pid || u.type !== type) continue;
-        const newMax = Math.round(UNITS[type].hp * upgradeMult(lvl + 1));
+        const civHp = CIVS[this.player(pid).civ].hpMult || 1;
+        const newMax = Math.max(1, Math.round(UNITS[type].hp * civHp * upgradeMult(lvl + 1)));
         u.hp += newMax - u.maxHp;
         u.maxHp = newMax;
       }

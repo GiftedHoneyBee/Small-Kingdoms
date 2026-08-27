@@ -408,7 +408,7 @@ function renderWiki() {
     <li>The <b>Mountain Giant</b> 🧌 (Mountain Lore tech) is the only unit that can walk over mountains.</li>
   </ul><h4>Map generation</h4><ul>
     <li><b>Sizes:</b> Tiny (25%), Small (50%), Normal, Big (200%), Huge (400%), Gigantic (1000%).</li>
-    <li><b>Types:</b> Pangea (one connected landmass, ~50% water) · Continents (large landmasses split by ocean) · Islands (lots of water, small isles) · Lakes (mostly land with big lakes) · Dryland (almost no water) · Mountain pass (~1/3 mountains dividing the land).</li>
+    <li><b>Types:</b> Pangea (one connected landmass, ~50% water) · Continents (large landmasses split by ocean) · Islands (lots of water, small isles) · Lakes (mostly land with big lakes) · Dryland (almost no water) · Mountain pass (~1/3 mountains dividing the land) · Ocean (70–90% water, varies each game).</li>
   </ul><h4>Controls & shortcuts</h4><ul>
     <li><b>Click</b> a unit to select it; click more of your units to group them.</li>
     <li><b>Click a tile</b> to move the selected group — units pathfind around mountains and water. Use the <b>🎯 Add targets</b> button to pick several destinations (they light up yellow) and split the group evenly between them; <b>🛑 Reset targets</b> stops the group.</li>
