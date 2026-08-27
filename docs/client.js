@@ -273,13 +273,19 @@ function renderSelectPanel(force = false) {
       b.onclick = () => sendAction({ action: 'build', cityId: c.id, building: k });
       el.appendChild(b);
     }
+    // auto-train: one small toggle button per unit type (max one active)
     const at = document.createElement('div');
-    at.innerHTML = '<b>Auto-train</b> ';
-    const sel = document.createElement('select');
-    sel.innerHTML = '<option value="">Off</option>' + Object.entries(DEFS.units)
-      .map(([k, d]) => `<option value="${k}"${c.autoTrain === k ? ' selected' : ''}>${d.name}</option>`).join('');
-    sel.onchange = () => sendAction({ action: 'autotrain', cityId: c.id, unit: sel.value || null });
-    at.appendChild(sel);
+    at.innerHTML = '<b>Auto-train</b><br>';
+    for (const [k, d] of Object.entries(DEFS.units)) {
+      const locked = d.tech && !state.techs.includes(d.tech);
+      const b = document.createElement('button');
+      b.className = 'act-btn mini-btn' + (c.autoTrain === k ? ' on' : '');
+      b.textContent = `${UNIT_ICONS[k]} ${d.name}`;
+      b.title = locked ? `Requires ${DEFS.techs[d.tech].name}` : `Auto-train ${d.name}`;
+      b.disabled = locked;
+      b.onclick = () => { sendAction({ action: 'autotrain', cityId: c.id, unit: c.autoTrain === k ? null : k }); c.autoTrain = c.autoTrain === k ? null : k; renderSelectPanel(true); };
+      at.appendChild(b);
+    }
     el.appendChild(at);
     // rally tile: newly trained units auto-travel there (until given other orders)
     const rw = document.createElement('div');
@@ -301,13 +307,16 @@ function renderSelectPanel(force = false) {
       rw.appendChild(rc);
     }
     el.appendChild(rw);
-    // default auto-attack radius for newly trained units
+    // default auto-attack radius for newly trained units: cycling button
     const ad = document.createElement('div');
     ad.innerHTML = '<b>Auto-attack (new units)</b> ';
-    const asel = document.createElement('select');
-    asel.innerHTML = [0, 3, 6, 9].map(v => `<option value="${v}"${(c.autoAttackDefault || 0) === v ? ' selected' : ''}>${v ? '≤' + v + ' tiles' : 'Off'}</option>`).join('');
-    asel.onchange = () => sendAction({ action: 'cityautoattack', cityId: c.id, radius: +asel.value });
-    ad.appendChild(asel);
+    const cur = c.autoAttackDefault || 0;
+    const next = cur === 0 ? 3 : cur === 3 ? 6 : cur === 6 ? 9 : 0;
+    const ab = document.createElement('button');
+    ab.className = 'act-btn mini-btn' + (cur ? ' on' : '');
+    ab.textContent = cur ? `⚔️ ≤${cur} tiles (click: ${next ? '≤' + next : 'off'})` : '⚔️ OFF (click: ≤3 tiles)';
+    ab.onclick = () => { sendAction({ action: 'cityautoattack', cityId: c.id, radius: next }); c.autoAttackDefault = next; renderSelectPanel(true); };
+    ad.appendChild(ab);
     el.appendChild(ad);
     addDeselectBtn(el);
   }

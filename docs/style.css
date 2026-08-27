@@ -58,6 +58,8 @@ button.primary:hover { background: #e0a83d; }
 
 .act-btn { display: block; width: 100%; text-align: left; font-size: 12px; margin: 3px 0; }
 .act-btn:disabled { opacity: .45; cursor: not-allowed; }
+.mini-btn { display: inline-block; width: auto; font-size: 12px; margin: 2px 3px 2px 0; padding: 3px 7px; }
+.mini-btn.on { border-color: #ffd54a; background: rgba(255,213,74,.18); }
 
 .setting-row { display: block; margin: 10px 0; font-size: 14px; }
 .wiki-panel { max-width: 640px !important; }
