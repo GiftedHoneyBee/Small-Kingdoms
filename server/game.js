@@ -477,7 +477,7 @@ class Game {
         const t = this.tile(nq, nr);
         if (!this.canEnterFrom(u, afloat, t, zones)) continue;
         const occ = occMap.get(nk);
-        let cost = 1;
+        let cost = TERRAIN[t.terrain].moveMult || 1; // slower terrain = pricier road
         if (occ && this.areAllies(u.ownerId, occ.ownerId)) cost += 4; // congestion penalty
         const ng = g + cost;
         if (ng < (gScore.get(nk) ?? Infinity)) {
@@ -549,7 +549,8 @@ class Game {
         continue;
       }
       const civ = CIVS[p.civ];
-      u.nextMoveAt = now + stats.moveMs * (u.boat ? (civ.boatMoveMult || 1) : (civ.speedMult || 1)) * this.moveMult;
+      const terrMult = TERRAIN[this.tile(step.q, step.r).terrain].moveMult || 1;
+      u.nextMoveAt = now + stats.moveMs * terrMult * (u.boat ? (civ.boatMoveMult || 1) : (civ.speedMult || 1)) * this.moveMult;
 
       if (occ) { this.fight(u, occ); if (!this.units.has(occ.id)) occMap.delete(key(occ.q, occ.r)); continue; }
       const city = this.cityAt(step.q, step.r);

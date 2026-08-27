@@ -41,8 +41,8 @@ const CIVS = {
 const TERRAIN = {
   water:    { move: false, food: 0, wood: 0, stone: 0, gold: 0 },
   grass:    { move: true,  food: 2, wood: 0, stone: 0, gold: 1 },
-  forest:   { move: true,  food: 1, wood: 2, stone: 0, gold: 0 },
-  hill:     { move: true,  food: 0, wood: 0, stone: 2, gold: 1 },
+  forest:   { move: true,  food: 1, wood: 2, stone: 0, gold: 0, moveMult: 1.2 },
+  hill:     { move: true,  food: 0, wood: 0, stone: 2, gold: 1, moveMult: 1.4 },
   mountain: { move: false, food: 0, wood: 0, stone: 0, gold: 0 },
 };
 

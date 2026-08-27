@@ -16,7 +16,7 @@ const seenEvents = new Set();
 const knownUnitIds = new Set();
 
 // session-persistent settings
-const SETTINGS = Object.assign({ arrows: false, autoSelect: false, graphics: 'new' },
+const SETTINGS = Object.assign({ arrows: true, autoSelect: true, graphics: 'animated' },
   JSON.parse(sessionStorage.getItem('me-settings') || '{}'));
 function saveSettings() { sessionStorage.setItem('me-settings', JSON.stringify(SETTINGS)); }
 
@@ -406,6 +406,7 @@ function renderWiki() {
     <li>Move a unit onto port waters and it boards a boat 🛶: speed 1 tile/${(DEFS.boat.moveMs / 1000).toFixed(0)}s, ATK ${DEFS.boat.atk}, DEF ${DEFS.boat.def}, range ${DEFS.boat.range}, HP is kept from the unit.</li>
     <li>Boats sail any water once launched. Moving a boat onto land makes the unit disembark.</li>
     <li>The <b>Mountain Giant</b> 🧌 (Mountain Lore tech) is the only unit that can walk over mountains.</li>
+    <li><b>Terrain speed:</b> moving onto a 🏜️ desert hill tile is 40% slower and onto a 🌲 forest tile 20% slower than grass. Units automatically pathfind the <i>fastest</i> road, so they may go around a desert instead of through it.</li>
   </ul><h4>Map generation</h4><ul>
     <li><b>Sizes:</b> Tiny (25%), Small (50%), Normal, Big (200%), Huge (400%), Gigantic (1000%).</li>
     <li><b>Types:</b> Pangea (one connected landmass, ~50% water) · Continents (large landmasses split by ocean) · Islands (lots of water, small isles) · Lakes (mostly land with big lakes) · Dryland (almost no water) · Mountain pass (~1/3 mountains dividing the land) · Ocean (70–90% water, varies each game).</li>
@@ -437,14 +438,14 @@ const TUT = { active: false, step: 0, baseUnits: 0, baseTechs: 0, baseTiles: 0, 
 const TUT_STEPS = [
   { title: 'Welcome, chief!', text: 'This is a <b>real practice match</b> against a peaceful bot. The game runs in real time — your empire earns resources every second while you learn. Your capital is marked below.', next: true, canvas: () => tutCapital() },
   { title: 'Select your warrior', text: 'Click your ⚔️ <b>warrior</b> — the little figure standing next to your capital.', check: () => selected && selected.kind === 'units' },
-  { title: 'Move & explore', text: 'Now <b>click a tile far away</b>. The warrior pathfinds there on its own and lifts the fog as it walks. Reveal some new land to continue.', check: () => tileMap.size >= TUT.baseTiles + 12 },
+  { title: 'Move & explore', text: 'Now <b>click a tile far away</b>. The warrior pathfinds there on its own and lifts the fog as it walks. Terrain matters: 🏜️ desert hills are 40% slower and 🌲 forests 20% slower than grass — units automatically take the fastest road, not the shortest. Reveal some new land to continue.', check: () => tileMap.size >= TUT.baseTiles + 12 },
   { title: 'Select your city', text: 'Press <b>Esc</b> to deselect, then <b>double-click your capital</b> (the tile with the tower) to select the city itself.', check: () => selected && selected.kind === 'city', canvas: () => tutCapital() },
   { title: 'Build a building', text: 'In the right panel, press 🏗️ <b>Sawmill</b> (20🪙). Buildings raise your income every second — economy wins games.', el: 'select-panel', check: () => state.cities.some(c => c.ownerId === myId && c.buildings.length) },
   { title: 'Train an army', text: 'With the city still selected, <b>train a unit</b> — a ⚔️ Warrior is cheapest. Tip: the <b>Auto-train</b> dropdown keeps producing units for you.', el: 'select-panel', check: () => state.units.filter(u => u.ownerId === myId).length > TUT.baseUnits, canvas: () => tutCapital() },
   { title: 'Research', text: 'Open 🔬 <b>Research</b> (top of the right panel) and research any tech. Science trickles in every second, so you may need to wait a moment.', el: 'tech-btn', check: () => state.techs.length > TUT.baseTechs },
   { title: 'Chat & diplomacy', text: 'Type something in the <b>chat</b> (bottom right) and press Enter. In the Players panel you can propose <b>alliances</b> the same way.', el: 'chat-input', check: () => TUT.chatted },
   { title: 'Combat', text: 'To fight, simply <b>move units onto enemies</b> or their cities (after the 90s peace period). Archers & catapults fire from range, and the ⚔️ Auto-attack button makes units engage on their own. Capture 🏕️ villages for free cities!', next: true },
-  { title: 'You are ready! 🏆', text: 'Win by reaching the ⭐ point goal, having the most points at 10:00, or eliminating everyone — the 📖 Wiki has every stat. Keep playing this practice match, or press Finish to return to the menu.', finish: true },
+  { title: 'You are ready! 🏆', text: 'Win by reaching the ⭐ point goal, having the most points at 10:00, or eliminating everyone. The 📖 <b>Wiki</b> in the main menu has every stat, rule and shortcut, and in the lobby you can set up games your way: map size & type, speed, win condition and bot difficulty. Keep playing this practice match, or press Finish to return to the menu.', finish: true },
 ];
 function tutCapital() {
   const c = state && state.cities.find(c => c.ownerId === myId && c.capital);
