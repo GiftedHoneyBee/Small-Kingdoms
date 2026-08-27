@@ -9,7 +9,7 @@ const tileMap = new Map();
 let needsDraw = true;
 let selectedCiv = 'valdorn';
 let selected = null; // {kind:'units', ids:[]} | {kind:'city', id}
-let groupDest = null; // current group move destination
+let groupDests = []; // current group move destinations (units split evenly between them)
 let cam = { x: 0, y: 0, scale: 34 };
 const seenEvents = new Set();
 const knownUnitIds = new Set();
@@ -211,11 +211,11 @@ function renderSelectPanel(force = false) {
       const boatTag = u.boat ? ` 🛶 in boat (ATK ${DEFS.boat.atk} · range ${DEFS.boat.range})` : '';
       const um = 1 + (u.level || 0) * DEFS.upgrades.bonusPerLevel;
       const lvlTag = u.level ? ` · ⬆️ Lv ${u.level}` : '';
-      el.innerHTML = `<h4>${UNIT_ICONS[u.type]} ${def.name}${boatTag}${lvlTag}</h4>HP ${u.hp}/${u.maxHp} · ATK ${(def.atk * um).toFixed(1)} · DEF ${(def.def * um).toFixed(1)}<br><small>Click a tile to move (click destination again to cancel). Click more of your units to group. Double-click a selected unit to select all of that type. Esc deselects.</small>`;
+      el.innerHTML = `<h4>${UNIT_ICONS[u.type]} ${def.name}${boatTag}${lvlTag}</h4>HP ${u.hp}/${u.maxHp} · ATK ${(def.atk * um).toFixed(1)} · DEF ${(def.def * um).toFixed(1)}<br><small>Click a tile to move. Click several tiles to split the group between them; double-click a tile to send everyone there. Double-click a selected unit to select all of that type. Esc deselects.</small>`;
     } else {
       el.innerHTML = `<h4>${us.length} units selected</h4>` +
         us.map(u => `${UNIT_ICONS[u.type]} ${DEFS.units[u.type].name}${u.boat ? ' 🛶' : ''} (${u.hp}/${u.maxHp})`).join('<br>') +
-        `<br><small>Click a tile to move them all (click it again to cancel). Esc deselects.</small>`;
+        `<br><small>Click several tiles to split the group between them; double-click a tile to send them ALL there. Esc deselects.</small>`;
     }
     // auto-attack radius cycles off -> 3 -> 6 -> 9 -> off
     const curAa = us[0].autoAttack || 0;
@@ -272,7 +272,7 @@ function renderSelectPanel(force = false) {
 
 function deselect() {
   selected = null;
-  groupDest = null;
+  groupDests = [];
   needsDraw = true;
   renderSelectPanel(true);
 }
@@ -397,7 +397,7 @@ function renderWiki() {
     <li><b>Types:</b> Pangea (one connected landmass, ~50% water) · Continents (large landmasses split by ocean) · Islands (lots of water, small isles) · Lakes (mostly land with big lakes) · Dryland (almost no water) · Mountain pass (~1/3 mountains dividing the land).</li>
   </ul><h4>Controls & shortcuts</h4><ul>
     <li><b>Click</b> a unit to select it; click more of your units to group them.</li>
-    <li><b>Click a tile</b> to move the whole selected group there — units pathfind around mountains and water. Click the destination again to cancel.</li>
+    <li><b>Click a tile</b> to move the selected group — units pathfind around mountains and water. Click <b>several tiles</b> to split the group evenly between them; <b>double-click a tile</b> to send ALL selected units there.</li>
     <li><b>Double-click a unit</b> to select all your units of that type.</li>
     <li><b>Double-click a city</b> to deselect all units and select the city.</li>
     <li><b>Esc</b> or the Deselect button clears the selection.</li>
@@ -562,8 +562,16 @@ canvas.addEventListener('dblclick', (e) => {
   // double-clicking an own city always selects it (deselecting any units)
   const city = state.cities.find(c => c.q === q && c.r === r && c.ownerId === myId);
   if (city) {
+    // undo any move order the first click of this double-click just issued toward the city
+    if (selected && selected.kind === 'units' && groupDests.some(d => d.q === q && d.r === r)) {
+      const us = selected.ids.map(id => state.units.find(u => u.id === id)).filter(u => u && u.ownerId === myId);
+      us.forEach((su, i) => {
+        const d = groupDests[i % groupDests.length];
+        if (d.q === q && d.r === r) sendAction({ action: 'stop', unitId: su.id });
+      });
+    }
     selected = { kind: 'city', id: city.id };
-    groupDest = null;
+    groupDests = [];
     needsDraw = true;
     renderSelectPanel(true);
     return;
@@ -572,8 +580,15 @@ canvas.addEventListener('dblclick', (e) => {
   if (unit && unit.ownerId === myId) {
     // select all own units of the same type
     selected = { kind: 'units', ids: state.units.filter(u => u.ownerId === myId && u.type === unit.type).map(u => u.id) };
+    groupDests = [];
     needsDraw = true;
     renderSelectPanel(true);
+    return;
+  }
+  // double-clicking a tile sends ALL selected units there
+  if (selected && selected.kind === 'units') {
+    groupDests = [{ q, r }];
+    dispatchGroup();
   }
 });
 
@@ -593,25 +608,29 @@ function handleTileClick(q, r) {
       renderSelectPanel(true);
       return;
     }
-    // clicking the current group destination again cancels the move
-    if (groupDest && groupDest.q === q && groupDest.r === r) {
-      for (const id of selected.ids) sendAction({ action: 'stop', unitId: id });
-      groupDest = null;
-      return;
-    }
-    // move the whole group toward the clicked tile (they keep moving until they arrive)
-    groupDest = { q, r };
-    for (const id of selected.ids) {
-      const su = state.units.find(u => u.id === id);
-      if (su && su.ownerId === myId && !(q === su.q && r === su.r)) sendAction({ action: 'move', unitId: id, q, r });
+    // each clicked tile becomes a destination; units split evenly between all of them
+    if (!groupDests.some(d => d.q === q && d.r === r)) {
+      groupDests.push({ q, r });
+      dispatchGroup();
     }
     return;
   }
-  if (unit && unit.ownerId === myId) selected = { kind: 'units', ids: [unit.id] };
+  if (unit && unit.ownerId === myId) { selected = { kind: 'units', ids: [unit.id] }; groupDests = []; }
   else if (city && city.ownerId === myId) selected = { kind: 'city', id: city.id };
   else selected = null;
   needsDraw = true;
   renderSelectPanel(true);
+}
+
+// split the selected units evenly between all current destinations
+function dispatchGroup() {
+  if (!selected || selected.kind !== 'units' || !groupDests.length) return;
+  const us = selected.ids.map(id => state.units.find(u => u.id === id)).filter(u => u && u.ownerId === myId);
+  us.forEach((su, i) => {
+    const d = groupDests[i % groupDests.length];
+    if (d.q === su.q && d.r === su.r) sendAction({ action: 'stop', unitId: su.id });
+    else sendAction({ action: 'move', unitId: su.id, q: d.q, r: d.r });
+  });
 }
 
 function drawHex(x, y, s, fill, stroke) {
