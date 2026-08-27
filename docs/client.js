@@ -10,6 +10,7 @@ let needsDraw = true;
 let selectedCiv = 'valdorn';
 let selected = null; // {kind:'units', ids:[]} | {kind:'city', id}
 let groupDests = []; // current group move destinations (units split evenly between them)
+let addingTargets = false; // 'Add targets' mode: clicked tiles become extra destinations
 let cam = { x: 0, y: 0, scale: 34 };
 const seenEvents = new Set();
 const knownUnitIds = new Set();
@@ -195,7 +196,7 @@ function renderSelectPanel(force = false) {
   const el = $('select-panel');
   const k = JSON.stringify([selected, selected && (selected.kind === 'units'
     ? selected.ids.map(id => state.units.find(u => u.id === id))
-    : state.cities.find(c => c.id === selected.id)), state.res, state.techs]);
+    : state.cities.find(c => c.id === selected.id)), state.res, state.techs, addingTargets, groupDests.length]);
   if (!force && k === selectKey) return;
   // don't rebuild the panel while a dropdown in it is open/focused (it would collapse)
   if (!force && el.contains(document.activeElement) && document.activeElement.tagName === 'SELECT') return;
@@ -211,11 +212,11 @@ function renderSelectPanel(force = false) {
       const boatTag = u.boat ? ` 🛶 in boat (ATK ${DEFS.boat.atk} · range ${DEFS.boat.range})` : '';
       const um = 1 + (u.level || 0) * DEFS.upgrades.bonusPerLevel;
       const lvlTag = u.level ? ` · ⬆️ Lv ${u.level}` : '';
-      el.innerHTML = `<h4>${UNIT_ICONS[u.type]} ${def.name}${boatTag}${lvlTag}</h4>HP ${u.hp}/${u.maxHp} · ATK ${(def.atk * um).toFixed(1)} · DEF ${(def.def * um).toFixed(1)}<br><small>Click a tile to move. Click several tiles to split the group between them; double-click a tile to send everyone there. Double-click a selected unit to select all of that type. Esc deselects.</small>`;
+      el.innerHTML = `<h4>${UNIT_ICONS[u.type]} ${def.name}${boatTag}${lvlTag}</h4>HP ${u.hp}/${u.maxHp} · ATK ${(def.atk * um).toFixed(1)} · DEF ${(def.def * um).toFixed(1)}<br><small>Click a tile to move. Use 🎯 Add targets to give the group several destinations to split between. Double-click a selected unit to select all of that type. Esc deselects.</small>`;
     } else {
       el.innerHTML = `<h4>${us.length} units selected</h4>` +
         us.map(u => `${UNIT_ICONS[u.type]} ${DEFS.units[u.type].name}${u.boat ? ' 🛶' : ''} (${u.hp}/${u.maxHp})`).join('<br>') +
-        `<br><small>Click several tiles to split the group between them; double-click a tile to send them ALL there. Esc deselects.</small>`;
+        `<br><small>Click a tile to move them all. Use 🎯 Add targets to split the group between several destinations. Esc deselects.</small>`;
     }
     // auto-attack radius cycles off -> 3 -> 6 -> 9 -> off
     const curAa = us[0].autoAttack || 0;
@@ -225,6 +226,18 @@ function renderSelectPanel(force = false) {
     aa.textContent = curAa ? `⚔️ Auto-attack: ≤${curAa} tiles (click: ${nextAa ? '≤' + nextAa + ' tiles' : 'off'})` : '⚔️ Auto-attack: OFF (click: ≤3 tiles)';
     aa.onclick = () => { for (const u of us) sendAction({ action: 'autoattack', unitId: u.id, range: nextAa }); };
     el.appendChild(aa);
+    // add-targets mode: clicked tiles light up yellow and units split between them
+    const at = document.createElement('button');
+    at.className = 'act-btn';
+    at.textContent = addingTargets ? `🎯 Adding targets (${groupDests.length}) — click to finish` : '🎯 Add targets';
+    if (addingTargets) at.style.borderColor = '#ffd54a';
+    at.onclick = () => { addingTargets = !addingTargets; needsDraw = true; renderSelectPanel(true); };
+    el.appendChild(at);
+    const rt = document.createElement('button');
+    rt.className = 'act-btn';
+    rt.textContent = '🛑 Reset targets';
+    rt.onclick = () => { groupDests = []; dispatchGroup(); needsDraw = true; renderSelectPanel(true); };
+    el.appendChild(rt);
     addDeselectBtn(el);
     for (const u of us) {
       if (u.type === 'settler') {
@@ -273,6 +286,7 @@ function renderSelectPanel(force = false) {
 function deselect() {
   selected = null;
   groupDests = [];
+  addingTargets = false;
   needsDraw = true;
   renderSelectPanel(true);
 }
@@ -397,7 +411,7 @@ function renderWiki() {
     <li><b>Types:</b> Pangea (one connected landmass, ~50% water) · Continents (large landmasses split by ocean) · Islands (lots of water, small isles) · Lakes (mostly land with big lakes) · Dryland (almost no water) · Mountain pass (~1/3 mountains dividing the land).</li>
   </ul><h4>Controls & shortcuts</h4><ul>
     <li><b>Click</b> a unit to select it; click more of your units to group them.</li>
-    <li><b>Click a tile</b> to move the selected group — units pathfind around mountains and water. Click <b>several tiles</b> to split the group evenly between them; <b>double-click a tile</b> to send ALL selected units there.</li>
+    <li><b>Click a tile</b> to move the selected group — units pathfind around mountains and water. Use the <b>🎯 Add targets</b> button to pick several destinations (they light up yellow) and split the group evenly between them; <b>🛑 Reset targets</b> stops the group.</li>
     <li><b>Double-click a unit</b> to select all your units of that type.</li>
     <li><b>Double-click a city</b> to deselect all units and select the city.</li>
     <li><b>Esc</b> or the Deselect button clears the selection.</li>
@@ -572,6 +586,7 @@ canvas.addEventListener('dblclick', (e) => {
     }
     selected = { kind: 'city', id: city.id };
     groupDests = [];
+    addingTargets = false;
     needsDraw = true;
     renderSelectPanel(true);
     return;
@@ -581,14 +596,10 @@ canvas.addEventListener('dblclick', (e) => {
     // select all own units of the same type
     selected = { kind: 'units', ids: state.units.filter(u => u.ownerId === myId && u.type === unit.type).map(u => u.id) };
     groupDests = [];
+    addingTargets = false;
     needsDraw = true;
     renderSelectPanel(true);
     return;
-  }
-  // double-clicking a tile sends ALL selected units there
-  if (selected && selected.kind === 'units') {
-    groupDests = [{ q, r }];
-    dispatchGroup();
   }
 });
 
@@ -608,14 +619,24 @@ function handleTileClick(q, r) {
       renderSelectPanel(true);
       return;
     }
-    // each clicked tile becomes a destination; units split evenly between all of them
-    if (!groupDests.some(d => d.q === q && d.r === r)) {
-      groupDests.push({ q, r });
+    if (addingTargets) {
+      // in add-targets mode each clicked tile becomes an extra destination;
+      // units split evenly between all destinations
+      const i = groupDests.findIndex(d => d.q === q && d.r === r);
+      if (i >= 0) groupDests.splice(i, 1); // clicking a target again removes it
+      else groupDests.push({ q, r });
       dispatchGroup();
+      needsDraw = true;
+      renderSelectPanel(true);
+      return;
     }
+    // normal click: everyone goes to this one tile
+    groupDests = [{ q, r }];
+    dispatchGroup();
+    needsDraw = true;
     return;
   }
-  if (unit && unit.ownerId === myId) { selected = { kind: 'units', ids: [unit.id] }; groupDests = []; }
+  if (unit && unit.ownerId === myId) { selected = { kind: 'units', ids: [unit.id] }; groupDests = []; addingTargets = false; }
   else if (city && city.ownerId === myId) selected = { kind: 'city', id: city.id };
   else selected = null;
   needsDraw = true;
@@ -624,8 +645,9 @@ function handleTileClick(q, r) {
 
 // split the selected units evenly between all current destinations
 function dispatchGroup() {
-  if (!selected || selected.kind !== 'units' || !groupDests.length) return;
+  if (!selected || selected.kind !== 'units') return;
   const us = selected.ids.map(id => state.units.find(u => u.id === id)).filter(u => u && u.ownerId === myId);
+  if (!groupDests.length) { for (const su of us) sendAction({ action: 'stop', unitId: su.id }); return; }
   us.forEach((su, i) => {
     const d = groupDests[i % groupDests.length];
     if (d.q === su.q && d.r === su.r) sendAction({ action: 'stop', unitId: su.id });
@@ -732,6 +754,14 @@ function render() {
     ctx.fillText(c.name, x, y - cam.scale * 0.75);
     drawBar(x, y + cam.scale * 0.55, c.hp / c.maxHp);
     if (selected && selected.kind === 'city' && selected.id === c.id) drawHex(x, y, cam.scale * 1.02, null, '#ffffff');
+  }
+
+  // current group destinations light up yellow while units are selected
+  if (selected && selected.kind === 'units') {
+    for (const d of groupDests) {
+      const { x, y } = hexToPx(d.q, d.r);
+      drawHex(x, y, cam.scale * 0.9, 'rgba(255,213,74,0.25)', '#ffd54a');
+    }
   }
 
   // planned movement arrows (setting)
