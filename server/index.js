@@ -150,6 +150,8 @@ wss.on('connection', (ws) => {
         else if (m.action === 'stop') g.actStop(pid, m.unitId);
         else if (m.action === 'autoattack') g.actAutoAttack(pid, m.unitId, m.range ?? (m.on ? 3 : 0));
         else if (m.action === 'autotrain') g.actAutoTrain(pid, m.cityId, m.unit);
+        else if (m.action === 'cityrally') g.actCityRally(pid, m.cityId, m.q, m.r);
+        else if (m.action === 'cityautoattack') g.actCityAutoAttack(pid, m.cityId, m.radius);
         else if (m.action === 'train') g.actTrain(pid, m.cityId, m.unit);
         else if (m.action === 'build') g.actBuild(pid, m.cityId, m.building);
         else if (m.action === 'research') g.actResearch(pid, m.tech);

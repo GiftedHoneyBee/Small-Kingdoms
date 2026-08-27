@@ -11,6 +11,7 @@ let selectedCiv = 'valdorn';
 let selected = null; // {kind:'units', ids:[]} | {kind:'city', id}
 let groupDests = []; // current group move destinations (units split evenly between them)
 let addingTargets = false; // 'Add targets' mode: clicked tiles become extra destinations
+let settingRally = null; // cityId while picking that city's rally tile on the map
 let cam = { x: 0, y: 0, scale: 34 };
 const seenEvents = new Set();
 const knownUnitIds = new Set();
@@ -280,14 +281,50 @@ function renderSelectPanel(force = false) {
     sel.onchange = () => sendAction({ action: 'autotrain', cityId: c.id, unit: sel.value || null });
     at.appendChild(sel);
     el.appendChild(at);
+    // rally tile: newly trained units auto-travel there (until given other orders)
+    const rw = document.createElement('div');
+    const sw = `<span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${rallyColor(c.id)}"></span>`;
+    rw.innerHTML = `<b>Auto travel</b> ${sw} `;
+    const rb = document.createElement('button');
+    rb.className = 'act-btn';
+    rb.style.display = 'inline-block';
+    rb.textContent = settingRally === c.id ? 'Click a tile on the map…' : (c.rally ? `Rally: ${c.rally.q},${c.rally.r} (change)` : 'Set rally tile');
+    if (settingRally === c.id) rb.style.borderColor = rallyColor(c.id);
+    rb.onclick = () => { settingRally = settingRally === c.id ? null : c.id; needsDraw = true; renderSelectPanel(true); };
+    rw.appendChild(rb);
+    if (c.rally) {
+      const rc = document.createElement('button');
+      rc.className = 'act-btn';
+      rc.style.display = 'inline-block';
+      rc.textContent = 'Off';
+      rc.onclick = () => { sendAction({ action: 'cityrally', cityId: c.id, q: null, r: null }); settingRally = null; needsDraw = true; };
+      rw.appendChild(rc);
+    }
+    el.appendChild(rw);
+    // default auto-attack radius for newly trained units
+    const ad = document.createElement('div');
+    ad.innerHTML = '<b>Auto-attack (new units)</b> ';
+    const asel = document.createElement('select');
+    asel.innerHTML = [0, 3, 6, 9].map(v => `<option value="${v}"${(c.autoAttackDefault || 0) === v ? ' selected' : ''}>${v ? '≤' + v + ' tiles' : 'Off'}</option>`).join('');
+    asel.onchange = () => sendAction({ action: 'cityautoattack', cityId: c.id, radius: +asel.value });
+    ad.appendChild(asel);
+    el.appendChild(ad);
     addDeselectBtn(el);
   }
+}
+
+// stable per-city color used for the rally marker on the city and its rally tile
+function rallyColor(cityId) {
+  let h = 0;
+  for (let i = 0; i < cityId.length; i++) h = (h * 31 + cityId.charCodeAt(i)) >>> 0;
+  return `hsl(${h % 360}, 85%, 62%)`;
 }
 
 function deselect() {
   selected = null;
   groupDests = [];
   addingTargets = false;
+  settingRally = null;
   needsDraw = true;
   renderSelectPanel(true);
 }
@@ -420,6 +457,8 @@ function renderWiki() {
     <li><b>Drag</b> to pan the map, <b>mouse wheel</b> to zoom.</li>
     <li><b>Auto-attack</b> button cycles OFF → ≤3 → ≤6 → ≤9 tiles → OFF (units chase enemies they detect in that radius).</li>
     <li><b>Auto-train</b> dropdown in a city keeps training a unit whenever affordable.</li>
+    <li><b>Auto travel</b>: give a city a rally tile (shown in the city's own color) and newly trained units automatically travel there until you give them other orders.</li>
+    <li><b>Auto-attack (new units)</b>: per city, choose the default auto-attack radius newly trained units start with.</li>
     <li><b>Settings</b> (⚙️ in menu): switch between New (blocky) and Classic graphics; movement arrows show each unit's planned destination; auto-select puts newly trained units into your selection. Saved for the whole session.</li>
   </ul><h4>Rules</h4><ul>
     <li>Income is generated every second from your cities, surrounding terrain and buildings. Extra cities give diminishing returns (each additional city produces 80% of the previous one).</li>
@@ -599,6 +638,7 @@ canvas.addEventListener('dblclick', (e) => {
     selected = { kind: 'units', ids: state.units.filter(u => u.ownerId === myId && u.type === unit.type).map(u => u.id) };
     groupDests = [];
     addingTargets = false;
+    settingRally = null;
     needsDraw = true;
     renderSelectPanel(true);
     return;
@@ -606,6 +646,14 @@ canvas.addEventListener('dblclick', (e) => {
 });
 
 function handleTileClick(q, r) {
+  // picking a rally tile for a city: the click sets the rally point instead
+  if (settingRally) {
+    sendAction({ action: 'cityrally', cityId: settingRally, q, r });
+    settingRally = null;
+    needsDraw = true;
+    renderSelectPanel(true);
+    return;
+  }
   const unit = state.units.find(u => u.q === q && u.r === r);
   const city = state.cities.find(c => c.q === q && c.r === r);
 
@@ -638,7 +686,7 @@ function handleTileClick(q, r) {
     needsDraw = true;
     return;
   }
-  if (unit && unit.ownerId === myId) { selected = { kind: 'units', ids: [unit.id] }; groupDests = []; addingTargets = false; }
+  if (unit && unit.ownerId === myId) { selected = { kind: 'units', ids: [unit.id] }; groupDests = []; addingTargets = false; settingRally = null; }
   else if (city && city.ownerId === myId) selected = { kind: 'city', id: city.id };
   else selected = null;
   needsDraw = true;
@@ -773,6 +821,19 @@ function render() {
     ctx.fillText(c.name, x, y - cam.scale * 0.75);
     drawBar(x, y + cam.scale * 0.55, c.hp / c.maxHp);
     if (selected && selected.kind === 'city' && selected.id === c.id) drawHex(x, y, cam.scale * 1.02, null, '#ffffff');
+  }
+
+  // rally markers: each own city with a rally tile gets a matching color pair
+  for (const c of state.cities) {
+    if (c.ownerId !== myId || !c.rally) continue;
+    const col = rallyColor(c.id);
+    const a = hexToPx(c.q, c.r), b = hexToPx(c.rally.q, c.rally.r);
+    if (onScreen(a.x, a.y)) drawHex(a.x, a.y, cam.scale * 0.62, null, col);
+    if (onScreen(b.x, b.y)) {
+      drawHex(b.x, b.y, cam.scale * 0.85, null, col);
+      ctx.beginPath(); ctx.arc(b.x, b.y, cam.scale * 0.14, 0, Math.PI * 2);
+      ctx.fillStyle = col; ctx.fill();
+    }
   }
 
   // current group destinations light up yellow while units are selected

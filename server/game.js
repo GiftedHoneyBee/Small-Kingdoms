@@ -123,7 +123,7 @@ class Game {
       id: uid('c'), ownerId: p.id, q, r,
       name: CITY_NAMES[this.cityNameIdx++ % CITY_NAMES.length],
       buildings: [], hp: isCapital ? 60 : 40, maxHp: isCapital ? 60 : 40, capital: isCapital,
-      autoTrain: null,
+      autoTrain: null, rally: null, autoAttackDefault: 0,
     };
     t.cityId = c.id; t.village = false;
     this.dirtyTiles.add(key(q, r));
@@ -218,6 +218,21 @@ class Game {
     c.autoTrain = type && UNITS[type] ? type : null;
   }
 
+  // rally point: newly trained units automatically travel there
+  actCityRally(pid, cityId, q, r) {
+    const c = this.cities.get(cityId);
+    if (!c || c.ownerId !== pid) return;
+    if (q == null || r == null || !this.tile(q, r) || (q === c.q && r === c.r)) { c.rally = null; return; }
+    c.rally = { q, r };
+  }
+
+  // default auto-attack radius for newly trained units (0/3/6/9)
+  actCityAutoAttack(pid, cityId, radius) {
+    const c = this.cities.get(cityId);
+    if (!c || c.ownerId !== pid) return;
+    c.autoAttackDefault = [0, 3, 6, 9].includes(radius) ? radius : 0;
+  }
+
   actTrain(pid, cityId, type) {
     const p = this.player(pid); const c = this.cities.get(cityId);
     const def = UNITS[type];
@@ -226,7 +241,11 @@ class Game {
     if (!this.canAfford(p, def.cost)) return;
     if (!this.hasSpawnSpot(c.q, c.r)) return;
     this.pay(p, def.cost);
-    this.spawnUnit(pid, type, c.q, c.r);
+    const u = this.spawnUnit(pid, type, c.q, c.r);
+    if (u) {
+      if (c.autoAttackDefault) u.autoAttack = c.autoAttackDefault;
+      if (c.rally && !(c.rally.q === u.q && c.rally.r === u.r)) u.dest = { q: c.rally.q, r: c.rally.r };
+    }
   }
 
   hasSpawnSpot(q, r) {
@@ -755,7 +774,7 @@ class Game {
       .map(u => ({ id: u.id, ownerId: u.ownerId, type: u.type, q: u.q, r: u.r, hp: Math.round(u.hp), maxHp: u.maxHp, autoAttack: u.autoAttack, boat: u.boat, dest: u.ownerId === pid ? u.dest : null, level: this.unitLevel(u.ownerId, u.type) }));
     const cities = [...this.cities.values()]
       .filter(c => p.explored.has(key(c.q, c.r)))
-      .map(c => ({ id: c.id, ownerId: c.ownerId, q: c.q, r: c.r, name: c.name, hp: Math.round(c.hp), maxHp: c.maxHp, buildings: c.buildings, capital: c.capital, autoTrain: c.autoTrain }));
+      .map(c => ({ id: c.id, ownerId: c.ownerId, q: c.q, r: c.r, name: c.name, hp: Math.round(c.hp), maxHp: c.maxHp, buildings: c.buildings, capital: c.capital, autoTrain: c.autoTrain, rally: c.ownerId === pid ? c.rally : null, autoAttackDefault: c.ownerId === pid ? c.autoAttackDefault : 0 }));
     const players = [...this.players.values()].map(o => ({
       id: o.id, name: o.name, civ: o.civ, isBot: o.isBot, alive: o.alive,
       points: Math.round(o.points),
