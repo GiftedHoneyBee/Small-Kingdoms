@@ -101,7 +101,7 @@ class Bot {
     const myUnits = [...g.units.values()].filter(u => u.ownerId === p.id);
     const enemies = [...g.players.values()].filter(o => o.id !== p.id && o.alive && !p.allies.has(o.id));
     const enemyCities = [...g.cities.values()].filter(c => enemies.some(e => e.id === c.ownerId) && p.explored.has(key(c.q, c.r)));
-    const villages = [...g.tiles.values()].filter(t => t.village && p.explored.has(key(t.q, t.r)));
+    const villages = g.tileList.filter(t => t.village && p.explored.has(key(t.q, t.r)));
 
     for (const u of myUnits) {
       if (u.dest) continue;
@@ -127,10 +127,10 @@ class Bot {
         continue;
       }
       // explore: move toward a random unexplored-ish direction
-      let cand = [...g.tiles.values()][Math.floor(Math.random() * g.tiles.size)];
+      let cand = g.tileList[Math.floor(Math.random() * g.tileList.length)];
       if (this.cfg.avoid) {
         for (let tries = 0; cand && this.nearEnemy(p, cand) && tries < 8; tries++) {
-          cand = [...g.tiles.values()][Math.floor(Math.random() * g.tiles.size)];
+          cand = g.tileList[Math.floor(Math.random() * g.tileList.length)];
         }
         if (cand && this.nearEnemy(p, cand)) continue; // nowhere safe to go right now
       }

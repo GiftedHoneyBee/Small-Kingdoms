@@ -103,6 +103,7 @@ function onState(s) {
   state = s;
   for (const t of s.tiles) tileMap.set(`${t.q},${t.r}`, t);
   needsDraw = true;
+  portTilesDirty = true;
   assignColors(s.players);
   // auto-select newly trained units (setting)
   const newMine = [];
@@ -679,6 +680,27 @@ function getSortedTiles() {
   return sortedTiles;
 }
 
+// port-zone highlight tiles, recomputed only when a new state arrives
+let portTilesDirty = true;
+let portTilesCache = new Set();
+function getPortTiles() {
+  if (!portTilesDirty) return portTilesCache;
+  portTilesDirty = false;
+  portTilesCache = new Set();
+  for (const c of state.cities) {
+    if (!c.buildings.includes('port')) continue;
+    const R = DEFS.buildings.port.portRange || 3;
+    for (let dq = -R; dq <= R; dq++) {
+      for (let dr = Math.max(-R, -dq - R); dr <= Math.min(R, -dq + R); dr++) {
+        const k = `${c.q + dq},${c.r + dr}`;
+        const t = tileMap.get(k);
+        if (t && t.terrain === 'water') portTilesCache.add(k);
+      }
+    }
+  }
+  return portTilesCache;
+}
+
 function render() {
   requestAnimationFrame(render);
   const animated = SETTINGS.graphics === 'animated';
@@ -692,23 +714,18 @@ function render() {
   ctx.save();
   ctx.translate(canvas.width / 2 - cam.x, canvas.height / 2 - cam.y);
 
-  // water tiles within port range of an explored city that has a port
-  const portTiles = new Set();
-  for (const c of state.cities) {
-    if (!c.buildings.includes('port')) continue;
-    const R = DEFS.buildings.port.portRange || 3;
-    for (let dq = -R; dq <= R; dq++) {
-      for (let dr = Math.max(-R, -dq - R); dr <= Math.min(R, -dq + R); dr++) {
-        const k = `${c.q + dq},${c.r + dr}`;
-        const t = tileMap.get(k);
-        if (t && t.terrain === 'water') portTiles.add(k);
-      }
-    }
-  }
+  const portTiles = getPortTiles();
+
+  // viewport culling: skip everything outside the visible screen area
+  const margin = cam.scale * 2.5;
+  const minX = cam.x - canvas.width / 2 - margin, maxX = cam.x + canvas.width / 2 + margin;
+  const minY = cam.y - canvas.height / 2 - margin, maxY = cam.y + canvas.height / 2 + margin;
+  const onScreen = (x, y) => x >= minX && x <= maxX && y >= minY && y <= maxY;
 
   const tiles = blocky ? getSortedTiles() : tileMap.values();
   for (const t of tiles) {
     const { x, y } = hexToPx(t.q, t.r);
+    if (!onScreen(x, y)) continue;
     if (blocky) {
       GFX.drawTile(ctx, x, y, cam.scale * 0.98, t);
       if (portTiles.has(`${t.q},${t.r}`)) {
@@ -739,6 +756,7 @@ function render() {
 
   for (const c of state.cities) {
     const { x, y } = hexToPx(c.q, c.r);
+    if (!onScreen(x, y)) continue;
     if (blocky) {
       drawHex(x, y, cam.scale * 0.98, null, myColor(c.ownerId));
       GFX.drawCity(ctx, x, y, cam.scale, myColor(c.ownerId), c.capital, c.buildings.length);
@@ -784,6 +802,7 @@ function render() {
 
   for (const u of state.units) {
     const { x, y } = hexToPx(u.q, u.r);
+    if (!onScreen(x, y)) continue;
     if (blocky) {
       if (u.boat) GFX.drawBoat(ctx, x, y, cam.scale, myColor(u.ownerId));
       else GFX.drawUnit(ctx, x, y, cam.scale, u.type, myColor(u.ownerId));
